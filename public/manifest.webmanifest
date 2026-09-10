@@ -1,0 +1,13 @@
+{
+  "name": "Village Tuk-Tuks Ad Platform",
+  "short_name": "Tuk-Tuk Ads",
+  "start_url": "/player",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

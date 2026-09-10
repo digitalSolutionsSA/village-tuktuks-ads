@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: #0b0b0f;
+  color: #e5e7eb;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Kiosk player must never show scrollbars or allow text selection/zoom gestures */
+.kiosk {
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Top-bar marquee: two copies of the text back-to-back, scrolled left by
+   exactly half the track width so the loop is seamless. */
+.marquee-track {
+  width: max-content;
+  animation: marquee-scroll linear infinite;
+}
+
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
