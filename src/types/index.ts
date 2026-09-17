@@ -65,6 +65,8 @@ export interface Driver {
   id: string
   username: string
   active: boolean
+  /** The one tuk-tuk this driver's PIN works on. null = works on any tuk-tuk. */
+  tuktuk_id: number | null
   created_at: string
 }
 
@@ -72,6 +74,7 @@ export interface Driver {
 export interface DriverName {
   id: string
   username: string
+  tuktuk_id: number | null
 }
 
 export type DriverSessionAction = 'sign_in' | 'sign_out'

@@ -4,21 +4,27 @@ import type { Driver, DriverName, DriverSession, DriverSessionAction } from '../
 
 const DEMO_ERROR = 'Demo mode — connect Supabase (see README) to manage real drivers.'
 
-/** Public-safe list for the tablet's driver picker — usernames only, no PINs. */
-export async function listActiveDriverNames(): Promise<DriverName[]> {
+/** Public-safe list for one tuk-tuk's driver picker — only names valid there (unassigned or assigned to this tuk-tuk), no PINs. */
+export async function listActiveDriverNames(tuktukId: number): Promise<DriverName[]> {
   if (!isSupabaseConfigured) return [DEMO_DRIVER]
   const { data, error } = await supabase
     .from('active_driver_names')
-    .select('id, username')
+    .select('id, username, tuktuk_id')
+    .or(`tuktuk_id.is.null,tuktuk_id.eq.${tuktukId}`)
     .order('username')
   if (error) throw error
   return (data as DriverName[]) ?? []
 }
 
-export async function verifyDriverPin(driverId: string, candidate: string): Promise<boolean> {
+export async function verifyDriverPin(
+  driverId: string,
+  tuktukId: number,
+  candidate: string,
+): Promise<boolean> {
   if (!isSupabaseConfigured) return candidate === DEMO_DRIVER_PIN
   const { data, error } = await supabase.rpc('verify_driver_pin', {
     driver_id_param: driverId,
+    tuktuk_id_param: tuktukId,
     candidate,
   })
   if (error) {
@@ -51,19 +57,23 @@ export async function listDrivers(): Promise<Driver[]> {
   if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
   const { data, error } = await supabase
     .from('drivers')
-    .select('id, username, active, created_at')
+    .select('id, username, active, tuktuk_id, created_at')
     .order('username')
   if (error) throw error
   return (data as Driver[]) ?? []
 }
 
-export async function addDriver(username: string, pin: string): Promise<Driver> {
+export async function addDriver(
+  username: string,
+  pin: string,
+  tuktukId: number | null,
+): Promise<Driver> {
   if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
   if (!/^\d{6}$/.test(pin)) throw new Error('PIN must be exactly 6 digits.')
   const { data, error } = await supabase
     .from('drivers')
-    .insert({ username, pin })
-    .select('id, username, active, created_at')
+    .insert({ username, pin, tuktuk_id: tuktukId })
+    .select('id, username, active, tuktuk_id, created_at')
     .single()
   if (error) throw error
   return data as Driver
@@ -72,6 +82,12 @@ export async function addDriver(username: string, pin: string): Promise<Driver> 
 export async function setDriverActive(id: string, active: boolean): Promise<void> {
   if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
   const { error } = await supabase.from('drivers').update({ active }).eq('id', id)
+  if (error) throw error
+}
+
+export async function setDriverTuktuk(id: string, tuktukId: number | null): Promise<void> {
+  if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
+  const { error } = await supabase.from('drivers').update({ tuktuk_id: tuktukId }).eq('id', id)
   if (error) throw error
 }
 

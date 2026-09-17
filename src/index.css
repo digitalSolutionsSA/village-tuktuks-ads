@@ -41,3 +41,34 @@ body {
     transform: translateX(-50%);
   }
 }
+
+/* Left-tab marquee: same seamless two-copies trick, scrolled up instead of left. */
+.marquee-track-vertical {
+  height: max-content;
+  animation: marquee-scroll-vertical linear infinite;
+}
+
+@keyframes marquee-scroll-vertical {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+/* Statistics "live" activity feed: new rows slide/fade in from the top. */
+@keyframes live-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.live-row-in {
+  animation: live-row-in 0.35s ease-out;
+}

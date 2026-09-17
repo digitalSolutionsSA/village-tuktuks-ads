@@ -347,20 +347,25 @@ create policy "creative-media: admin deletes"
   using (bucket_id = 'creative-media' and public.is_admin(auth.uid()));
 
 -- ============================================================
--- 9. Drivers — each has their own username + PIN, works on any tablet
+-- 9. Drivers — each has their own username + PIN. If tuktuk_id is set, that
+--    driver's PIN only verifies on that one tablet; null means any tablet.
 -- ============================================================
 -- Tablets never read a driver's PIN directly — only admins can, via this
--- table's RLS. Tablets call verify_driver_pin(driver_id, candidate) instead,
--- which returns just true/false. The public "active_driver_names" view
--- exposes only id + username (no PIN) so the tablet can show a name picker.
+-- table's RLS. Tablets call verify_driver_pin(driver_id, tuktuk_id, candidate)
+-- instead, which returns just true/false. The public "active_driver_names"
+-- view exposes only id + username + tuktuk_id (no PIN) so the tablet can show
+-- a name picker already filtered to names valid on that tuk-tuk.
 
 create table if not exists public.drivers (
   id uuid primary key default gen_random_uuid(),
   username text not null unique,
   pin text not null,
   active boolean not null default true,
+  tuktuk_id int references public.tuktuks (id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+create index if not exists drivers_tuktuk_id_idx on public.drivers (tuktuk_id);
 
 alter table public.drivers enable row level security;
 
@@ -383,11 +388,18 @@ create policy "drivers: admin deletes"
 -- Owned by the migration-running role, so it can expose username/id to
 -- anon/authenticated without exposing the underlying table's PIN column.
 create or replace view public.active_driver_names as
-  select id, username from public.drivers where active = true;
+  select id, username, tuktuk_id from public.drivers where active = true;
 
 grant select on public.active_driver_names to anon, authenticated;
 
-create or replace function public.verify_driver_pin(driver_id_param uuid, candidate text)
+-- Superseded by the 3-arg version below (also checks tuk-tuk assignment).
+drop function if exists public.verify_driver_pin(uuid, text);
+
+create or replace function public.verify_driver_pin(
+  driver_id_param uuid,
+  tuktuk_id_param int,
+  candidate text
+)
 returns boolean
 language sql
 stable
@@ -396,11 +408,14 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.drivers
-    where id = driver_id_param and pin = candidate and active = true
+    where id = driver_id_param
+      and pin = candidate
+      and active = true
+      and (tuktuk_id is null or tuktuk_id = tuktuk_id_param)
   );
 $$;
 
-grant execute on function public.verify_driver_pin(uuid, text) to anon, authenticated;
+grant execute on function public.verify_driver_pin(uuid, int, text) to anon, authenticated;
 
 -- Sign-in / sign-out log. Snapshots the driver's username and tuk-tuk's
 -- label at the time, so history stays readable even if either is later

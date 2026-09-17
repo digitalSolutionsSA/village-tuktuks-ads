@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { getPlayableUrl, prefetchMedia } from '../lib/mediaCache'
 import type { SidebarAd } from '../types'
 
-const CYCLE_MS = 6000
+const BLOCK_COUNT = 4
 
-/** Left-hand bar of the player: cycles a tuk-tuk's own logo/service ads. */
-export function SidebarAds({ ads }: { ads: SidebarAd[] }) {
+/** 4 equal blocks of house/service ads — stacked in the left column, or a row across the top. */
+export function SidebarAds({
+  ads,
+  orientation = 'vertical',
+}: {
+  ads: SidebarAd[]
+  orientation?: 'vertical' | 'horizontal'
+}) {
   const [resolved, setResolved] = useState<Record<string, string>>({})
-  const [index, setIndex] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -32,41 +37,29 @@ export function SidebarAds({ ads }: { ads: SidebarAd[] }) {
   }, [ads])
 
   const playable = useMemo(() => ads.filter((a) => resolved[a.media_url]), [ads, resolved])
-
-  useEffect(() => {
-    setIndex((i) => (playable.length ? i % playable.length : 0))
-  }, [playable.length])
-
-  useEffect(() => {
-    if (playable.length < 2) return
-    const timer = window.setInterval(() => {
-      setIndex((i) => (i + 1) % playable.length)
-    }, CYCLE_MS)
-    return () => window.clearInterval(timer)
-  }, [playable.length])
-
-  const current = playable[index]
+  const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => playable[i] ?? null)
+  const isHorizontal = orientation === 'horizontal'
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 border-r border-white/10 bg-zinc-950 p-3">
-      {current ? (
-        <>
-          <div className="flex min-h-0 w-full flex-1 items-center justify-center">
-            <img
-              key={current.id}
-              src={resolved[current.media_url]}
-              alt={current.title}
-              className="max-h-full max-w-full rounded object-contain"
-            />
+    <div
+      className={`grid h-full w-full overflow-hidden bg-zinc-950 ${
+        isHorizontal
+          ? 'grid-cols-4 divide-x divide-white/10 border-b border-white/10'
+          : 'grid-rows-4 divide-y divide-white/10 border-r border-white/10'
+      }`}
+    >
+      {blocks.map((ad, i) =>
+        ad ? (
+          <div key={ad.id} className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden">
+            <img src={resolved[ad.media_url]} alt={ad.title} className="max-h-full max-w-full object-contain" />
           </div>
-          <p className="line-clamp-2 shrink-0 text-center text-sm font-medium text-white/70">
-            {current.title}
-          </p>
-        </>
-      ) : (
-        <p className="px-1 text-center text-sm leading-tight text-white/20">
-          Your ads here — ask admin to add one for this tuk-tuk
-        </p>
+        ) : (
+          <div key={i} className="flex min-h-0 min-w-0 items-center justify-center">
+            <p className="px-1 text-center text-sm leading-tight text-white/20">
+              Your ads here — ask admin to add one for this tuk-tuk
+            </p>
+          </div>
+        ),
       )}
     </div>
   )

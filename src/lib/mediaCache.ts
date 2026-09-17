@@ -19,6 +19,10 @@ export async function getPlayableUrl(remoteUrl: string): Promise<string | null> 
   const existing = blobUrlByRemoteUrl.get(remoteUrl)
   if (existing) return existing
 
+  // data: URLs (demo-mode inline SVGs) are already local — the Cache Storage
+  // API can't store non-http(s) requests, and there's nothing to fetch anyway.
+  if (remoteUrl.startsWith('data:')) return remoteUrl
+
   if (!hasCacheApi()) {
     // No Cache Storage support (very old WebView) — best effort, direct URL.
     return remoteUrl

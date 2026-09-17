@@ -35,6 +35,9 @@ export function AdminLayout() {
               <NavLink to="/admin/marquee" className={linkClass}>
                 Marquee
               </NavLink>
+              <NavLink to="/admin/statistics" className={linkClass}>
+                Statistics
+              </NavLink>
               {isAdmin && (
                 <NavLink to="/admin/drivers" className={linkClass}>
                   Drivers

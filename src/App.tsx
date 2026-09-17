@@ -12,6 +12,7 @@ import { TuktukDetail } from './pages/admin/TuktukDetail'
 import { Groups } from './pages/admin/Groups'
 import { Drivers } from './pages/admin/Drivers'
 import { Marquee } from './pages/admin/Marquee'
+import { Statistics } from './pages/admin/Statistics'
 import { Player } from './pages/player/Player'
 
 function App() {
@@ -42,6 +43,7 @@ function App() {
           <Route path="groups" element={<Groups />} />
           <Route path="drivers" element={<Drivers />} />
           <Route path="marquee" element={<Marquee />} />
+          <Route path="statistics" element={<Statistics />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

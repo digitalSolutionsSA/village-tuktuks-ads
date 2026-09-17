@@ -90,7 +90,7 @@ export function demoTuktukIdsForAd(adId: string): number[] {
 }
 
 /** Fixed driver + PIN used only when no real Supabase project is connected. */
-export const DEMO_DRIVER = { id: 'demo-driver', username: 'Demo Driver' }
+export const DEMO_DRIVER = { id: 'demo-driver', username: 'Demo Driver', tuktuk_id: null }
 export const DEMO_DRIVER_PIN = '123456'
 
 function sidebarAdImage(label: string, [c1, c2]: [string, string]) {
@@ -103,6 +103,21 @@ function sidebarAdImage(label: string, [c1, c2]: [string, string]) {
     </defs>
     <rect width="300" height="300" fill="url(#g)"/>
     <text x="150" y="160" text-anchor="middle" font-family="system-ui, sans-serif" font-size="26" font-weight="700" fill="#fff">${label}</text>
+  </svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
+function marqueeBannerImage(label: string, tagline: string, [c1, c2]: [string, string]) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="200" viewBox="0 0 2000 200">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="${c1}"/>
+        <stop offset="1" stop-color="${c2}"/>
+      </linearGradient>
+    </defs>
+    <rect width="2000" height="200" fill="url(#g)"/>
+    <text x="1000" y="95" text-anchor="middle" font-family="system-ui, sans-serif" font-size="64" font-weight="700" fill="#fff">${label}</text>
+    <text x="1000" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="34" fill="rgba(255,255,255,0.85)">${tagline}</text>
   </svg>`
   return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
@@ -154,7 +169,7 @@ export function demoMarqueeFor(tuktukId: number): MarqueeMessage[] {
       advertiser_name: 'Baobab Backpackers',
       message: `Special for Tuk-Tuk ${String(tuktukId).padStart(2, '0')} riders: 10% off with code TUKTUK10`,
       media_path: `demo/marquee/${tuktukId}`,
-      media_url: sidebarAdImage('Baobab Backpackers', ['#c2410c', '#78350f']),
+      media_url: marqueeBannerImage('Baobab Backpackers', '10% off with code TUKTUK10', ['#c2410c', '#78350f']),
       is_active: true,
       sort_order: 1,
       created_at: new Date().toISOString(),

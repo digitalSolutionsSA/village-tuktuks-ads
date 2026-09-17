@@ -4,6 +4,7 @@ import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { DEMO_TUKTUKS, demoAdCountFor } from '../../lib/demoData'
 import { addTuktuk, deleteTuktuk, setTuktukActive } from '../../lib/tuktuksApi'
 import { listGroups } from '../../lib/groupsApi'
+import { listDrivers } from '../../lib/driversApi'
 import { useAuth } from '../../context/AuthContext'
 import type { Tuktuk, TuktukGroup } from '../../types'
 
@@ -15,6 +16,7 @@ export function TuktuksOverview() {
   const [tuktuks, setTuktuks] = useState<Tuktuk[]>([])
   const [groups, setGroups] = useState<TuktukGroup[]>([])
   const [counts, setCounts] = useState<Record<number, number>>({})
+  const [driverNamesByTuktuk, setDriverNamesByTuktuk] = useState<Record<number, string[]>>({})
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
@@ -62,6 +64,22 @@ export function TuktuksOverview() {
       }
     }
     setCounts(nextCounts)
+
+    // Best-effort: only admins can read the drivers table; a 'customer'
+    // profile viewing this page simply won't see nicknames.
+    try {
+      const drivers = await listDrivers()
+      const byTuktuk: Record<number, string[]> = {}
+      for (const d of drivers) {
+        if (d.tuktuk_id != null) {
+          byTuktuk[d.tuktuk_id] = [...(byTuktuk[d.tuktuk_id] ?? []), d.username]
+        }
+      }
+      setDriverNamesByTuktuk(byTuktuk)
+    } catch {
+      setDriverNamesByTuktuk({})
+    }
+
     setLoading(false)
   }
 
@@ -142,9 +160,14 @@ export function TuktuksOverview() {
                 tuktuk.active ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-800/60 bg-zinc-900/40'
               }`}
             >
-              <div className="mb-2 flex items-center justify-between">
+              <div className="mb-2 flex items-start justify-between">
                 <Link to={`/admin/tuktuks/${tuktuk.id}`} className="hover:underline">
                   <span className="text-lg font-semibold text-white">{tuktuk.label}</span>
+                  {driverNamesByTuktuk[tuktuk.id] && (
+                    <span className="block text-xs font-normal text-purple-300">
+                      {driverNamesByTuktuk[tuktuk.id].join(', ')}
+                    </span>
+                  )}
                 </Link>
                 {tuktuk.active ? (
                   <span

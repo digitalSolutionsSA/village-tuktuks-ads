@@ -28,6 +28,14 @@ const HEARTBEAT_INTERVAL_MS = 60 * 1000
 const DEFAULT_IMAGE_SECONDS = 8
 const VIDEO_SAFETY_TIMEOUT_MS = 90 * 1000
 
+/** Fleet-wide house rules, always filling the sidebar's 4 blocks. */
+const HOUSE_RULE_ADS: SidebarAd[] = [
+  { id: 'house-rule-cctv', tuktuk_id: 0, title: "You're on CCTV", media_path: 'Ads/banner 1.png', media_url: '/Ads/banner%201.png', is_active: true, sort_order: -4, created_at: '2026-01-01T00:00:00Z' },
+  { id: 'house-rule-disclaimer', tuktuk_id: 0, title: 'Disclaimer', media_path: 'Ads/banner 2.png', media_url: '/Ads/banner%202.png', is_active: true, sort_order: -3, created_at: '2026-01-01T00:00:00Z' },
+  { id: 'house-rule-no-smoking', tuktuk_id: 0, title: 'No Smoking, Eating or Drinking', media_path: 'Ads/banner 3.png', media_url: '/Ads/banner%203.png', is_active: true, sort_order: -2, created_at: '2026-01-01T00:00:00Z' },
+  { id: 'house-rule-rates', tuktuk_id: 0, title: 'Ride Rates', media_path: 'Ads/banner 4.png', media_url: '/Ads/banner%204.png', is_active: true, sort_order: -1, created_at: '2026-01-01T00:00:00Z' },
+]
+
 export function Player() {
   const { id } = useParams()
   const tuktukId = Number(id)
@@ -188,6 +196,7 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
       const freshMarquee = await listMarqueeForTuktuk(tuktukId)
       setMarqueeMessages(freshMarquee)
       saveMarqueeManifest(tuktukId, freshMarquee)
+      prefetchMedia(freshMarquee.filter((m) => m.media_url).map((m) => m.media_url as string))
     } catch (err) {
       console.warn('[Player] marquee refresh failed, staying on cached set', err)
     }
@@ -305,7 +314,7 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
 
   const openDriverPicker = () => {
     setDriverListVisible(true)
-    listActiveDriverNames()
+    listActiveDriverNames(tuktukId)
       .then(setAvailableDrivers)
       .catch(() => setAvailableDrivers([]))
   }
@@ -347,18 +356,18 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
   return (
     <div
       ref={rootRef}
-      className="kiosk grid h-screen w-screen grid-cols-[13rem_1fr] grid-rows-[7rem_1fr] overflow-hidden bg-black sm:grid-cols-[17rem_1fr] sm:grid-rows-[8.5rem_1fr] lg:grid-cols-[21rem_1fr] lg:grid-rows-[10rem_1fr]"
+      className="kiosk grid h-screen w-screen grid-cols-[13rem_1fr] grid-rows-[9rem_1fr] overflow-hidden bg-black sm:grid-cols-[17rem_1fr] sm:grid-rows-[11rem_1fr] lg:grid-cols-[21rem_1fr] lg:grid-rows-[13rem_1fr]"
     >
       <div className="flex items-center justify-center bg-zinc-950 p-1">
         <img src="/LOGO.png" alt="Village Tuk-Tuks" className="max-h-full max-w-full object-contain" />
       </div>
 
       <div className="min-w-0">
-        <MarqueeBar messages={marqueeMessages} />
+        <SidebarAds ads={[...HOUSE_RULE_ADS, ...sidebarAds]} orientation="horizontal" />
       </div>
 
       <div className="min-h-0">
-        <SidebarAds ads={sidebarAds} />
+        <MarqueeBar messages={marqueeMessages} orientation="vertical" />
       </div>
 
       <div
@@ -403,7 +412,7 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
         {pinContext === 'start' && pendingDriver && (
           <PinPad
             title={`Enter PIN for ${pendingDriver.username}`}
-            onVerify={(candidate) => verifyDriverPin(pendingDriver.id, candidate)}
+            onVerify={(candidate) => verifyDriverPin(pendingDriver.id, tuktukId, candidate)}
             onSuccess={startCycle}
             onIdleTimeout={cancelStart}
           />
@@ -411,7 +420,7 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
         {pinContext === 'exit' && currentDriver && (
           <PinPad
             title="Enter PIN to exit"
-            onVerify={(candidate) => verifyDriverPin(currentDriver.id, candidate)}
+            onVerify={(candidate) => verifyDriverPin(currentDriver.id, tuktukId, candidate)}
             onSuccess={stopCycle}
             onIdleTimeout={() => setPinContext(null)}
           />

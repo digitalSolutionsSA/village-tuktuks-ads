@@ -6,20 +6,24 @@ import {
   listRecentSessions,
   setDriverActive,
   setDriverPin,
+  setDriverTuktuk,
 } from '../../lib/driversApi'
+import { listTuktuks } from '../../lib/tuktuksApi'
 import { useAuth } from '../../context/AuthContext'
-import type { Driver, DriverSession } from '../../types'
+import type { Driver, DriverSession, Tuktuk } from '../../types'
 
 export function Drivers() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
   const [drivers, setDrivers] = useState<Driver[]>([])
+  const [tuktuks, setTuktuks] = useState<Tuktuk[]>([])
   const [sessions, setSessions] = useState<DriverSession[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [newUsername, setNewUsername] = useState('')
   const [newPin, setNewPin] = useState('')
+  const [newTuktukId, setNewTuktukId] = useState<'' | number>('')
   const [creating, setCreating] = useState(false)
 
   const [resettingId, setResettingId] = useState<string | null>(null)
@@ -29,8 +33,9 @@ export function Drivers() {
   const load = async () => {
     setLoading(true)
     try {
-      const [d, s] = await Promise.all([listDrivers(), listRecentSessions()])
+      const [d, t, s] = await Promise.all([listDrivers(), listTuktuks(), listRecentSessions()])
       setDrivers(d)
+      setTuktuks(t)
       setSessions(s)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load drivers.')
@@ -43,14 +48,18 @@ export function Drivers() {
     load()
   }, [])
 
+  const tuktukLabel = (id: number | null) =>
+    id === null ? 'Any tuk-tuk' : (tuktuks.find((t) => t.id === id)?.label ?? `Tuk-Tuk #${id}`)
+
   const handleCreate = async () => {
     if (!newUsername.trim() || newPin.length !== 6) return
     setError(null)
     setCreating(true)
     try {
-      await addDriver(newUsername.trim(), newPin)
+      await addDriver(newUsername.trim(), newPin, newTuktukId === '' ? null : newTuktukId)
       setNewUsername('')
       setNewPin('')
+      setNewTuktukId('')
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add driver.')
@@ -69,6 +78,19 @@ export function Drivers() {
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update driver.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleAssignTuktuk = async (driver: Driver, tuktukId: number | null) => {
+    setError(null)
+    setBusyId(driver.id)
+    try {
+      await setDriverTuktuk(driver.id, tuktukId)
+      setDrivers((prev) => prev.map((d) => (d.id === driver.id ? { ...d, tuktuk_id: tuktukId } : d)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update tuk-tuk assignment.')
     } finally {
       setBusyId(null)
     }
@@ -114,18 +136,18 @@ export function Drivers() {
     <div className="max-w-2xl">
       <h1 className="mb-2 text-xl font-semibold text-white">Drivers</h1>
       <p className="mb-6 text-sm text-zinc-400">
-        Each driver signs in on any tablet with their own username + 6-digit PIN — no shared
-        code. Deactivate a driver to instantly block their PIN everywhere without affecting anyone
-        else.
+        Each driver signs in with their own username + 6-digit PIN. Assign a driver to a specific
+        tuk-tuk and their PIN only works on that tablet — leave it as "Any tuk-tuk" for a relief
+        driver who covers multiple. Deactivate a driver to instantly block their PIN everywhere.
       </p>
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
         <input
           value={newUsername}
           onChange={(e) => setNewUsername(e.target.value)}
-          placeholder="Driver name, e.g. Mark"
+          placeholder="Driver name, e.g. Johan"
           className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-purple-400"
         />
         <input
@@ -135,6 +157,18 @@ export function Drivers() {
           placeholder="6-digit PIN"
           className="w-32 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-white outline-none focus:border-purple-400"
         />
+        <select
+          value={newTuktukId}
+          onChange={(e) => setNewTuktukId(e.target.value === '' ? '' : Number(e.target.value))}
+          className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-purple-400"
+        >
+          <option value="">Any tuk-tuk</option>
+          {tuktuks.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label} only
+            </option>
+          ))}
+        </select>
         <button
           onClick={handleCreate}
           disabled={creating || !newUsername.trim() || newPin.length !== 6}
@@ -154,12 +188,29 @@ export function Drivers() {
               key={driver.id}
               className="rounded-lg border border-zinc-800 bg-zinc-900 p-3"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-white">{driver.username}</p>
-                  <p className="text-xs text-zinc-500">{driver.active ? 'Active' : 'Deactivated'}</p>
+                  <p className="text-xs text-zinc-500">
+                    {driver.active ? 'Active' : 'Deactivated'} · {tuktukLabel(driver.tuktuk_id)}
+                  </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={driver.tuktuk_id ?? ''}
+                    disabled={busy}
+                    onChange={(e) =>
+                      handleAssignTuktuk(driver, e.target.value === '' ? null : Number(e.target.value))
+                    }
+                    className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-white outline-none focus:border-purple-400 disabled:opacity-50"
+                  >
+                    <option value="">Any tuk-tuk</option>
+                    {tuktuks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label} only
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => {
                       setResettingId(resettingId === driver.id ? null : driver.id)

@@ -140,8 +140,9 @@ export function Marquee() {
               className="block text-sm text-zinc-300 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-zinc-700"
             />
             <p className="mt-1 text-xs text-zinc-500">
-              Scrolls alongside the text. Any resolution works, including large square artwork
-              (e.g. 2000×2000) — it's scaled to fit the bar's height.
+              This is the actual ad shown on the tuk-tuk screens — upload real banner artwork,
+              recommended 2000×200px. It's shown as-is (no cropping); the message text above is
+              only shown as a fallback until artwork is uploaded.
             </p>
           </div>
           <div>

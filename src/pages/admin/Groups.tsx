@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { addGroup, deleteGroup, listGroups, renameGroup } from '../../lib/groupsApi'
+import { setTuktukGroup } from '../../lib/tuktuksApi'
 import { useAuth } from '../../context/AuthContext'
 import type { Tuktuk, TuktukGroup } from '../../types'
 
@@ -15,6 +16,8 @@ export function Groups() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null)
+  const [savingTuktukId, setSavingTuktukId] = useState<number | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -71,6 +74,19 @@ export function Groups() {
     }
   }
 
+  const handleAssignTuktuk = async (tuktuk: Tuktuk, groupId: string | null) => {
+    setError(null)
+    setSavingTuktukId(tuktuk.id)
+    try {
+      await setTuktukGroup(tuktuk.id, groupId)
+      setTuktuks((prev) => prev.map((t) => (t.id === tuktuk.id ? { ...t, group_id: groupId } : t)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update tuk-tuk group.')
+    } finally {
+      setSavingTuktukId(null)
+    }
+  }
+
   const handleDelete = async (group: TuktukGroup) => {
     if (
       !confirm(
@@ -94,8 +110,8 @@ export function Groups() {
       <h1 className="mb-2 text-xl font-semibold text-white">Tuk-tuk groups</h1>
       <p className="mb-6 text-sm text-zinc-400">
         Group tuk-tuks by area (e.g. "Meyerton") so you can go live on a whole group at once
-        instead of picking every tuk-tuk individually. Assign a tuk-tuk to a group from its detail
-        page under Tuk-Tuks.
+        instead of picking every tuk-tuk individually. Click "Manage tuk-tuks" on a group to assign
+        or remove them — a tuk-tuk can only belong to one group at a time.
       </p>
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
@@ -121,56 +137,99 @@ export function Groups() {
       {groups.length === 0 && <p className="text-sm text-zinc-500">No groups yet.</p>}
 
       <div className="space-y-2">
-        {groups.map((group) => (
-          <div
-            key={group.id}
-            className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 p-3"
-          >
-            {editingId === group.id ? (
-              <input
-                autoFocus
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRename(group.id)}
-                className="mr-2 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white outline-none focus:border-purple-400"
-              />
-            ) : (
-              <div>
-                <p className="text-sm font-medium text-white">{group.name}</p>
-                <p className="text-xs text-zinc-500">{countFor(group.id)} tuk-tuk(s)</p>
-              </div>
-            )}
-
-            {isAdmin && (
-              <div className="flex gap-2">
+        {groups.map((group) => {
+          const expanded = expandedGroupId === group.id
+          return (
+            <div key={group.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+              <div className="flex items-center justify-between">
                 {editingId === group.id ? (
-                  <button
-                    onClick={() => handleRename(group.id)}
-                    className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
-                  >
-                    Save
-                  </button>
+                  <input
+                    autoFocus
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRename(group.id)}
+                    className="mr-2 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-white outline-none focus:border-purple-400"
+                  />
                 ) : (
+                  <div>
+                    <p className="text-sm font-medium text-white">{group.name}</p>
+                    <p className="text-xs text-zinc-500">{countFor(group.id)} tuk-tuk(s)</p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
                   <button
-                    onClick={() => {
-                      setEditingId(group.id)
-                      setEditingName(group.name)
-                    }}
+                    onClick={() => setExpandedGroupId(expanded ? null : group.id)}
                     className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
                   >
-                    Rename
+                    {expanded ? 'Hide tuk-tuks' : 'Manage tuk-tuks'}
                   </button>
-                )}
-                <button
-                  onClick={() => handleDelete(group)}
-                  className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
-                >
-                  Delete
-                </button>
+                  {isAdmin && (
+                    <>
+                      {editingId === group.id ? (
+                        <button
+                          onClick={() => handleRename(group.id)}
+                          className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                        >
+                          Save
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingId(group.id)
+                            setEditingName(group.name)
+                          }}
+                          className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                        >
+                          Rename
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(group)}
+                        className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        ))}
+
+              {expanded && (
+                <div className="mt-3 border-t border-zinc-800 pt-3">
+                  {tuktuks.length === 0 ? (
+                    <p className="text-xs text-zinc-500">No tuk-tuks in the fleet yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {tuktuks.map((t) => {
+                        const inThisGroup = t.group_id === group.id
+                        const otherGroup = !inThisGroup && t.group_id ? groups.find((g) => g.id === t.group_id) : null
+                        return (
+                          <label
+                            key={t.id}
+                            className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-2 py-1.5 text-sm text-zinc-200"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={inThisGroup}
+                              disabled={!isAdmin || savingTuktukId === t.id}
+                              onChange={(e) => handleAssignTuktuk(t, e.target.checked ? group.id : null)}
+                              className="accent-purple-500"
+                            />
+                            <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                            {otherGroup && (
+                              <span className="shrink-0 text-xs text-zinc-500">in {otherGroup.name}</span>
+                            )}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
