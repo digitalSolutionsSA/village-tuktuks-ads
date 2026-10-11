@@ -487,3 +487,85 @@ alter publication supabase_realtime add table public.marquee_messages;
 -- Optional hardening: Authentication → Providers → Email → turn off
 -- "Allow new users to sign up", since this app never links to a sign-up
 -- form anyway.
+
+-- ============================================================
+-- 12. Client sign-up & signed agreements (sales portal)
+-- ============================================================
+-- "sales" users can only sign up clients. Create one like an admin (section
+-- 11), then: update public.profiles set role = 'sales' where email = '...';
+
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('admin', 'sales', 'customer'));
+
+create or replace function public.is_staff(uid uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.profiles where id = uid and role in ('admin', 'sales')); $$;
+
+create table if not exists public.clients (
+  id uuid primary key default gen_random_uuid(),
+  legal_name text not null,
+  company_name text,
+  registration_no text,
+  physical_address text,
+  email text not null,
+  telephone text,
+  authorised_rep text,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+alter table public.clients enable row level security;
+create policy "clients: staff reads own, admin reads all" on public.clients for select
+  using (public.is_admin(auth.uid()) or (created_by = auth.uid() and public.is_staff(auth.uid())));
+create policy "clients: staff inserts" on public.clients for insert
+  with check (public.is_staff(auth.uid()) and created_by = auth.uid());
+create policy "clients: admin updates" on public.clients for update using (public.is_admin(auth.uid()));
+create policy "clients: admin deletes" on public.clients for delete using (public.is_admin(auth.uid()));
+
+-- Named "client_agreements" (no "ads") for the ad-blocker reason in section 4.
+create table if not exists public.client_agreements (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients (id) on delete cascade,
+  effective_date date not null,
+  areas text[] not null default '{}',
+  other_area text,
+  monthly_fee numeric(12, 2),
+  vat text check (vat in ('inclusive', 'exclusive', 'not_applicable')),
+  campaign_start date,
+  initial_term text,
+  package_notes text,
+  client_signer_name text not null,
+  client_signer_company text,
+  client_signer_capacity text,
+  vm_signer_name text not null,
+  vm_signer_capacity text,
+  signed_at timestamptz not null default now(),
+  pdf_path text,
+  emailed_at timestamptz,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists client_agreements_client_id_idx on public.client_agreements (client_id);
+alter table public.client_agreements enable row level security;
+create policy "client_agreements: staff reads own, admin reads all" on public.client_agreements for select
+  using (public.is_admin(auth.uid()) or (created_by = auth.uid() and public.is_staff(auth.uid())));
+create policy "client_agreements: staff inserts" on public.client_agreements for insert
+  with check (public.is_staff(auth.uid()) and created_by = auth.uid());
+create policy "client_agreements: creator or admin updates" on public.client_agreements for update
+  using (public.is_admin(auth.uid()) or (created_by = auth.uid() and public.is_staff(auth.uid())));
+create policy "client_agreements: admin deletes" on public.client_agreements for delete using (public.is_admin(auth.uid()));
+
+-- Private bucket; files stored as <uploader uid>/<agreement id>.pdf
+insert into storage.buckets (id, name, public)
+values ('signed-contracts', 'signed-contracts', false)
+on conflict (id) do nothing;
+create policy "signed-contracts: staff uploads own folder" on storage.objects for insert
+  with check (bucket_id = 'signed-contracts' and public.is_staff(auth.uid())
+    and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "signed-contracts: owner or admin reads" on storage.objects for select
+  using (bucket_id = 'signed-contracts' and (public.is_admin(auth.uid())
+    or (public.is_staff(auth.uid()) and (storage.foldername(name))[1] = auth.uid()::text)));
+create policy "signed-contracts: admin deletes" on storage.objects for delete
+  using (bucket_id = 'signed-contracts' and public.is_admin(auth.uid()));
+
+-- Emailing the PDF: deploy supabase/functions/send-contract and set its
+-- secrets RESEND_API_KEY, CONTRACT_FROM_EMAIL (and optional CONTRACT_BCC_EMAIL).

@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'customer'
+export type UserRole = 'admin' | 'sales' | 'customer'
 
 export interface Profile {
   id: string
@@ -115,3 +115,46 @@ export interface MarqueeMessage {
 }
 
 export const TUKTUK_COUNT = 16
+
+export interface Client {
+  id: string
+  legal_name: string
+  company_name: string | null
+  registration_no: string | null
+  physical_address: string | null
+  email: string
+  telephone: string | null
+  authorised_rep: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export type VatOption = 'inclusive' | 'exclusive' | 'not_applicable'
+
+/** A signed advertising agreement. Named "client_agreements" (not "ad…") for the ad-blocker reason in lib/supabase.ts. */
+export interface ClientAgreement {
+  id: string
+  client_id: string
+  effective_date: string
+  areas: string[]
+  other_area: string | null
+  monthly_fee: number | null
+  vat: VatOption | null
+  campaign_start: string | null
+  initial_term: string | null
+  package_notes: string | null
+  client_signer_name: string
+  client_signer_company: string | null
+  client_signer_capacity: string | null
+  vm_signer_name: string
+  vm_signer_capacity: string | null
+  signed_at: string
+  pdf_path: string | null
+  emailed_at: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface ClientAgreementWithClient extends ClientAgreement {
+  client: Client
+}

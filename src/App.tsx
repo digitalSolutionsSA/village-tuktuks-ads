@@ -13,6 +13,8 @@ import { Groups } from './pages/admin/Groups'
 import { Drivers } from './pages/admin/Drivers'
 import { Marquee } from './pages/admin/Marquee'
 import { Statistics } from './pages/admin/Statistics'
+import { Clients } from './pages/admin/Clients'
+import { ClientSignup } from './pages/admin/ClientSignup'
 import { Player } from './pages/player/Player'
 
 function App() {
@@ -44,6 +46,8 @@ function App() {
           <Route path="drivers" element={<Drivers />} />
           <Route path="marquee" element={<Marquee />} />
           <Route path="statistics" element={<Statistics />} />
+          <Route path="clients" element={<Clients />} />
+          <Route path="clients/new" element={<ClientSignup />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

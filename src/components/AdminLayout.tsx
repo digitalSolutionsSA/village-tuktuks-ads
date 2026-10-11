@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { isSupabaseConfigured } from '../lib/supabase'
 
@@ -10,6 +10,13 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 export function AdminLayout() {
   const { profile, signOut } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  const isSales = profile?.role === 'sales'
+  const { pathname } = useLocation()
+
+  // Sales staff only sign up clients — keep them out of ads, tuk-tuks and drivers.
+  if (isSales && !pathname.startsWith('/admin/clients')) {
+    return <Navigate to="/admin/clients" replace />
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -19,24 +26,31 @@ export function AdminLayout() {
             <span className="text-sm font-semibold tracking-wide text-white">
               Village Tuk-Tuks · Ad Platform
             </span>
-            <nav className="flex gap-1">
-              <NavLink to="/admin" end className={linkClass}>
-                Dashboard
-              </NavLink>
-              <NavLink to="/admin/ads" className={linkClass}>
-                Ads
-              </NavLink>
-              <NavLink to="/admin/tuktuks" className={linkClass}>
-                Tuk-Tuks
-              </NavLink>
-              <NavLink to="/admin/groups" className={linkClass}>
-                Groups
-              </NavLink>
-              <NavLink to="/admin/marquee" className={linkClass}>
-                Marquee
-              </NavLink>
-              <NavLink to="/admin/statistics" className={linkClass}>
-                Statistics
+            <nav className="flex flex-wrap gap-1">
+              {!isSales && (
+                <>
+                  <NavLink to="/admin" end className={linkClass}>
+                    Dashboard
+                  </NavLink>
+                  <NavLink to="/admin/ads" className={linkClass}>
+                    Ads
+                  </NavLink>
+                  <NavLink to="/admin/tuktuks" className={linkClass}>
+                    Tuk-Tuks
+                  </NavLink>
+                  <NavLink to="/admin/groups" className={linkClass}>
+                    Groups
+                  </NavLink>
+                  <NavLink to="/admin/marquee" className={linkClass}>
+                    Marquee
+                  </NavLink>
+                  <NavLink to="/admin/statistics" className={linkClass}>
+                    Statistics
+                  </NavLink>
+                </>
+              )}
+              <NavLink to="/admin/clients" className={linkClass}>
+                Clients
               </NavLink>
               {isAdmin && (
                 <NavLink to="/admin/drivers" className={linkClass}>
@@ -48,9 +62,9 @@ export function AdminLayout() {
           <div className="flex items-center gap-3 text-sm text-zinc-400">
             <span>
               {profile?.display_name || profile?.email}
-              {profile?.role === 'admin' && (
+              {(isAdmin || isSales) && (
                 <span className="ml-2 rounded bg-purple-500/20 px-1.5 py-0.5 text-xs text-purple-300">
-                  admin
+                  {profile?.role}
                 </span>
               )}
             </span>
