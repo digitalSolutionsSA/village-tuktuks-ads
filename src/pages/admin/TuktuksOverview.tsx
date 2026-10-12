@@ -163,6 +163,9 @@ export function TuktuksOverview() {
               <div className="mb-2 flex items-start justify-between">
                 <Link to={`/admin/tuktuks/${tuktuk.id}`} className="hover:underline">
                   <span className="text-lg font-semibold text-white">{tuktuk.label}</span>
+                  {tuktuk.nickname && (
+                    <span className="block text-sm font-normal text-zinc-300">{tuktuk.nickname}</span>
+                  )}
                   {driverNamesByTuktuk[tuktuk.id] && (
                     <span className="block text-xs font-normal text-purple-300">
                       {driverNamesByTuktuk[tuktuk.id].join(', ')}

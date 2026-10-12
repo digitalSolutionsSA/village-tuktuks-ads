@@ -34,9 +34,16 @@ export interface TuktukGroup {
 export interface Tuktuk {
   id: number
   label: string
+  /** Optional friendly name, e.g. the owner's name — shown alongside the label in the admin. */
+  nickname: string | null
   active: boolean
   group_id: string | null
   last_seen_at: string | null
+}
+
+/** "Tuk-Tuk 01 · Pieter van Zyl", or just the label when there's no nickname. */
+export function tuktukName(t: Pick<Tuktuk, 'label' | 'nickname'>) {
+  return t.nickname ? `${t.label} · ${t.nickname}` : t.label
 }
 
 export interface AdAssignment {

@@ -8,7 +8,7 @@ import {
 } from '../../lib/marqueeApi'
 import { listTuktuks } from '../../lib/tuktuksApi'
 import { useAuth } from '../../context/AuthContext'
-import type { MarqueeMessage, Tuktuk } from '../../types'
+import { tuktukName, type MarqueeMessage, type Tuktuk } from '../../types'
 
 export function Marquee() {
   const { profile } = useAuth()
@@ -88,7 +88,8 @@ export function Marquee() {
 
   const labelFor = (tuktukId: number | null) => {
     if (tuktukId === null) return 'Whole fleet'
-    return tuktuks.find((t) => t.id === tuktukId)?.label ?? `Tuk-Tuk #${tuktukId}`
+    const t = tuktuks.find((x) => x.id === tuktukId)
+    return t ? tuktukName(t) : `Tuk-Tuk #${tuktukId}`
   }
 
   if (loading) return <p className="text-zinc-500">Loading…</p>
@@ -155,7 +156,7 @@ export function Marquee() {
               <option value="all">Whole fleet</option>
               {tuktuks.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.label} only
+                  {tuktukName(t)} only
                 </option>
               ))}
             </select>

@@ -569,3 +569,8 @@ create policy "signed-contracts: admin deletes" on storage.objects for delete
 
 -- Emailing the PDF: deploy supabase/functions/send-contract and set its
 -- secrets RESEND_API_KEY, CONTRACT_FROM_EMAIL (and optional CONTRACT_BCC_EMAIL).
+
+-- ============================================================
+-- 13. Tuk-tuk nicknames (e.g. the owner's name)
+-- ============================================================
+alter table public.tuktuks add column if not exists nickname text;

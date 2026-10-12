@@ -10,7 +10,7 @@ import {
 } from '../../lib/driversApi'
 import { listTuktuks } from '../../lib/tuktuksApi'
 import { useAuth } from '../../context/AuthContext'
-import type { Driver, DriverSession, Tuktuk } from '../../types'
+import { tuktukName, type Driver, type DriverSession, type Tuktuk } from '../../types'
 
 export function Drivers() {
   const { profile } = useAuth()
@@ -48,8 +48,11 @@ export function Drivers() {
     load()
   }, [])
 
-  const tuktukLabel = (id: number | null) =>
-    id === null ? 'Any tuk-tuk' : (tuktuks.find((t) => t.id === id)?.label ?? `Tuk-Tuk #${id}`)
+  const tuktukLabel = (id: number | null) => {
+    if (id === null) return 'Any tuk-tuk'
+    const t = tuktuks.find((x) => x.id === id)
+    return t ? tuktukName(t) : `Tuk-Tuk #${id}`
+  }
 
   const handleCreate = async () => {
     if (!newUsername.trim() || newPin.length !== 6) return
@@ -165,7 +168,7 @@ export function Drivers() {
           <option value="">Any tuk-tuk</option>
           {tuktuks.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.label} only
+              {tuktukName(t)} only
             </option>
           ))}
         </select>
@@ -207,7 +210,7 @@ export function Drivers() {
                     <option value="">Any tuk-tuk</option>
                     {tuktuks.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.label} only
+                        {tuktukName(t)} only
                       </option>
                     ))}
                   </select>

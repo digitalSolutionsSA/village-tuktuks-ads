@@ -2,7 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { DEMO_TUKTUKS, demoPlaylistFor } from '../../lib/demoData'
-import { deleteTuktuk, renameTuktuk, setTuktukActive, setTuktukGroup } from '../../lib/tuktuksApi'
+import {
+  deleteTuktuk,
+  renameTuktuk,
+  setTuktukActive,
+  setTuktukGroup,
+  setTuktukNickname,
+} from '../../lib/tuktuksApi'
 import { listGroups } from '../../lib/groupsApi'
 import {
   createSidebarAd,
@@ -31,6 +37,8 @@ export function TuktukDetail() {
   const [error, setError] = useState<string | null>(null)
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelDraft, setLabelDraft] = useState('')
+  const [editingNickname, setEditingNickname] = useState(false)
+  const [nicknameDraft, setNicknameDraft] = useState('')
   const [sidebarAds, setSidebarAds] = useState<SidebarAd[]>([])
   const [sidebarTitle, setSidebarTitle] = useState('')
   const [sidebarFile, setSidebarFile] = useState<File | null>(null)
@@ -170,6 +178,22 @@ export function TuktukDetail() {
     }
   }
 
+  const handleSaveNickname = async () => {
+    if (!tuktuk) return
+    const nickname = nicknameDraft.trim() || null
+    setError(null)
+    setBusy(true)
+    try {
+      await setTuktukNickname(tuktuk.id, nickname)
+      setTuktuk({ ...tuktuk, nickname })
+      setEditingNickname(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save nickname.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleGroupChange = async (groupId: string) => {
     if (!tuktuk) return
     setError(null)
@@ -278,6 +302,46 @@ export function TuktukDetail() {
                 </button>
               )}
             </h1>
+          )}
+          {editingNickname ? (
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                autoFocus
+                value={nicknameDraft}
+                placeholder="Nickname, e.g. Pieter van Zyl"
+                onChange={(e) => setNicknameDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveNickname()}
+                className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-white outline-none focus:border-purple-400"
+              />
+              <button
+                onClick={handleSaveNickname}
+                disabled={busy}
+                className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setEditingNickname(false)}
+                className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <p className="mt-0.5 flex items-center gap-2 text-sm text-purple-300">
+              {tuktuk.nickname || <span className="text-zinc-600">No nickname</span>}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setNicknameDraft(tuktuk.nickname ?? '')
+                    setEditingNickname(true)
+                  }}
+                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  {tuktuk.nickname ? 'edit nickname' : 'add nickname'}
+                </button>
+              )}
+            </p>
           )}
           <p className="mt-1 text-sm text-zinc-400">
             {tuktuk.active ? (

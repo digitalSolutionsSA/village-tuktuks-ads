@@ -3,7 +3,7 @@ import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { addGroup, deleteGroup, listGroups, renameGroup } from '../../lib/groupsApi'
 import { setTuktukGroup } from '../../lib/tuktuksApi'
 import { useAuth } from '../../context/AuthContext'
-import type { Tuktuk, TuktukGroup } from '../../types'
+import { tuktukName, type Tuktuk, type TuktukGroup } from '../../types'
 
 export function Groups() {
   const { profile } = useAuth()
@@ -216,7 +216,7 @@ export function Groups() {
                               onChange={(e) => handleAssignTuktuk(t, e.target.checked ? group.id : null)}
                               className="accent-purple-500"
                             />
-                            <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                            <span className="min-w-0 flex-1 truncate">{tuktukName(t)}</span>
                             {otherGroup && (
                               <span className="shrink-0 text-xs text-zinc-500">in {otherGroup.name}</span>
                             )}

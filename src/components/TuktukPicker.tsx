@@ -1,4 +1,4 @@
-import type { Tuktuk } from '../types'
+import { tuktukName, type Tuktuk } from '../types'
 
 interface Props {
   tuktuks: Tuktuk[]
@@ -21,7 +21,7 @@ export function TuktukPicker({ tuktuks, selected, onToggle }: Props) {
             key={t.id}
             type="button"
             disabled={disabled}
-            title={disabled ? `${t.label} is inactive` : t.label}
+            title={disabled ? `${tuktukName(t)} is inactive` : tuktukName(t)}
             onClick={() => onToggle(t.id)}
             className={`rounded-lg border px-2 py-3 text-sm font-medium transition ${
               disabled

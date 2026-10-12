@@ -61,6 +61,7 @@ export const DEMO_TUKTUKS: Tuktuk[] = Array.from({ length: TUKTUK_COUNT }, (_, i
   return {
     id,
     label: `Tuk-Tuk ${String(id).padStart(2, '0')}`,
+    nickname: null,
     active: true,
     group_id: null,
     last_seen_at: new Date(

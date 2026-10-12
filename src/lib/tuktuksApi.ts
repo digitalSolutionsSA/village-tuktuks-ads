@@ -43,6 +43,12 @@ export async function renameTuktuk(id: number, label: string) {
   if (error) throw error
 }
 
+export async function setTuktukNickname(id: number, nickname: string | null) {
+  if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
+  const { error } = await supabase.from('tuktuks').update({ nickname }).eq('id', id)
+  if (error) throw error
+}
+
 export async function setTuktukGroup(id: number, groupId: string | null) {
   if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
   const { error } = await supabase.from('tuktuks').update({ group_id: groupId }).eq('id', id)
