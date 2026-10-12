@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { getPlayableUrl, prefetchMedia, pruneCache } from '../../lib/mediaCache'
 import {
@@ -40,12 +41,16 @@ export function Player() {
   const { id } = useParams()
   const tuktukId = Number(id)
   const valid = id && Number.isInteger(tuktukId) && tuktukId >= 1
+  const [params] = useSearchParams()
+  const { profile } = useAuth()
+  // ?preview only takes effect for a signed-in admin — anyone else gets the normal driver flow.
+  const preview = params.has('preview') && profile?.role === 'admin'
 
-  if (!valid) return <PlayerSetup />
-  return <PlayerScreen tuktukId={tuktukId} />
+  if (!valid) return <PlayerSetup preview={preview} />
+  return <PlayerScreen tuktukId={tuktukId} preview={preview} />
 }
 
-function PlayerSetup() {
+function PlayerSetup({ preview }: { preview: boolean }) {
   const [tuktuks, setTuktuks] = useState<Tuktuk[] | null>(null)
 
   useEffect(() => {
@@ -56,10 +61,13 @@ function PlayerSetup() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-950 p-8 text-center">
-      <h1 className="text-2xl font-semibold text-white">Select this tablet's tuk-tuk number</h1>
+      <h1 className="text-2xl font-semibold text-white">
+        {preview ? 'Preview which tuk-tuk?' : "Select this tablet's tuk-tuk number"}
+      </h1>
       <p className="max-w-md text-sm text-zinc-400">
-        Pick the number for this tuk-tuk, then set the resulting page as this browser's home page
-        / start URL so it always reloads to the same tuk-tuk.
+        {preview
+          ? 'Admin preview — shows exactly what that tuk-tuk plays, no driver sign-in needed.'
+          : "Pick the number for this tuk-tuk, then set the resulting page as this browser's home page / start URL so it always reloads to the same tuk-tuk."}
       </p>
       {tuktuks === null ? (
         <p className="text-sm text-zinc-500">Loading fleet…</p>
@@ -68,7 +76,7 @@ function PlayerSetup() {
           {tuktuks.map((t) => (
             <Link
               key={t.id}
-              to={`/player/${t.id}`}
+              to={`/player/${t.id}${preview ? '?preview' : ''}`}
               className={`rounded-xl border px-4 py-6 text-lg font-semibold hover:border-purple-400 ${
                 t.active
                   ? 'border-zinc-700 bg-zinc-900 text-white'
@@ -142,7 +150,7 @@ async function fetchPlaylist(tuktukId: number, groupId: string | null): Promise<
 
 type Mode = 'welcome' | 'cycling'
 
-function PlayerScreen({ tuktukId }: { tuktukId: number }) {
+function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolean }) {
   const [items, setItems] = useState<PlaylistItem[]>(() =>
     isSupabaseConfigured ? loadManifest(tuktukId) : demoPlaylistFor(tuktukId),
   )
@@ -245,7 +253,8 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
   // through a narrow RPC — the anon key can never rewrite the tuk-tuk's
   // label/active/group directly.
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    // An admin previewing from their own browser mustn't make the tablet look online.
+    if (!isSupabaseConfigured || preview) return
     const beat = () => {
       supabase
         .rpc('report_heartbeat', { tuktuk_id_param: tuktukId })
@@ -256,7 +265,12 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
     beat()
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS)
     return () => window.clearInterval(interval)
-  }, [tuktukId])
+  }, [tuktukId, preview])
+
+  // Admin preview skips the driver picker + PIN and goes straight to the ad cycle.
+  useEffect(() => {
+    if (preview) setMode('cycling')
+  }, [preview])
 
   // Resolve each ad's media into a locally cached, offline-safe URL.
   useEffect(() => {
@@ -373,7 +387,7 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
       <div
         className="relative min-h-0 min-w-0"
         onClick={() => {
-          if (mode === 'cycling' && pinContext === null) setPinContext('exit')
+          if (mode === 'cycling' && pinContext === null && !preview) setPinContext('exit')
         }}
       >
         {mode === 'welcome' && pinContext !== 'start' ? (
@@ -424,6 +438,18 @@ function PlayerScreen({ tuktukId }: { tuktukId: number }) {
             onSuccess={stopCycle}
             onIdleTimeout={() => setPinContext(null)}
           />
+        )}
+
+        {preview && (
+          <div className="absolute right-3 top-3 flex items-center gap-2 text-xs">
+            <span className="rounded bg-purple-500/30 px-2 py-1 text-purple-200">Admin preview</span>
+            <Link
+              to="/admin/tuktuks"
+              className="rounded bg-black/60 px-2 py-1 text-white/80 hover:text-white"
+            >
+              Exit
+            </Link>
+          </div>
         )}
 
         <div className="absolute left-3 top-3 flex items-center gap-2 text-xs text-white/40">

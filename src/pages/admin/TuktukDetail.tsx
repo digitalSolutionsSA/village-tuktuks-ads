@@ -296,7 +296,7 @@ export function TuktukDetail() {
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <a
-            href={`/player/${tuktukId}`}
+            href={`/player/${tuktukId}?preview`}
             target="_blank"
             rel="noreferrer"
             className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"

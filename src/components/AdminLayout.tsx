@@ -60,6 +60,16 @@ export function AdminLayout() {
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-zinc-400">
+            {isAdmin && (
+              <a
+                href="/player?preview"
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-purple-500/50 px-3 py-1.5 text-purple-300 hover:bg-purple-500/10"
+              >
+                ▶ Preview player
+              </a>
+            )}
             <span>
               {profile?.display_name || profile?.email}
               {(isAdmin || isSales) && (
