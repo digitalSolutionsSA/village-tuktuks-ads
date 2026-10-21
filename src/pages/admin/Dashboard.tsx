@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { DEMO_ADS, DEMO_TUKTUKS } from '../../lib/demoData'
 import { useAuth } from '../../context/AuthContext'
+import { StatCard } from '../../components/StatCard'
+import { listAgreements } from '../../lib/clientsApi'
+import { computeStats, formatRand, listLeads, type SalesStats } from '../../lib/salesApi'
+import { isStaffOnline, listStaff } from '../../lib/staffApi'
 
 interface Stats {
   totalAds: number
@@ -16,6 +20,7 @@ const ONLINE_THRESHOLD_MS = 3 * 60 * 1000
 export function Dashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState<Stats | null>(null)
+  const [sales, setSales] = useState<(SalesStats & { repsOnline: number; reps: number }) | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -51,7 +56,19 @@ export function Dashboard() {
         totalTuktuks: tuktuks?.length ?? 0,
       })
     }
-    if (profile) load()
+    const loadSales = async () => {
+      const [staff, leads, agreements] = await Promise.all([listStaff(), listLeads(), listAgreements()])
+      const reps = staff.filter((p) => p.role === 'sales' && p.active)
+      setSales({
+        ...computeStats(leads, agreements),
+        reps: reps.length,
+        repsOnline: reps.filter((p) => isStaffOnline(p)).length,
+      })
+    }
+    if (profile) {
+      load()
+      loadSales().catch((err) => console.error('[Dashboard] sales stats', err))
+    }
   }, [profile])
 
   return (
@@ -68,7 +85,15 @@ export function Dashboard() {
         <StatCard label="Your role" value={profile?.role ?? '—'} />
       </div>
 
-      <div className="mt-8 flex gap-3">
+      <h2 className="mb-3 mt-8 font-medium text-white">Sales</h2>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Reps online" value={sales ? `${sales.repsOnline}/${sales.reps}` : undefined} tone={sales?.repsOnline ? 'good' : undefined} />
+        <StatCard label="Signed this month" value={sales?.contractsThisMonth} />
+        <StatCard label="New monthly revenue" value={sales ? formatRand(sales.newMonthlyRevenue) : undefined} />
+        <StatCard label="Open leads" value={sales?.leadsOpen} hint={sales ? `${sales.followUpsDue} follow-ups due` : undefined} />
+      </div>
+
+      <div className="mt-8 flex flex-wrap gap-3">
         <Link
           to="/admin/ads/new"
           className="rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white hover:bg-purple-400"
@@ -82,21 +107,18 @@ export function Dashboard() {
           View tuk-tuk fleet
         </Link>
         <Link
+          to="/admin/sales-team"
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+        >
+          Sales team
+        </Link>
+        <Link
           to="/admin/groups"
           className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
         >
           Manage groups
         </Link>
       </div>
-    </div>
-  )
-}
-
-function StatCard({ label, value }: { label: string; value: string | number | undefined }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value ?? '—'}</p>
     </div>
   )
 }

@@ -58,6 +58,32 @@ into `/admin`. To create yourself (or a second admin, max 1–2 recommended):
 Optional hardening: Authentication → Providers → Email → turn off "Allow new
 users to sign up," since the app never links to a sign-up form anyway.
 
+### Management vs. sales team
+
+- **Management portal** (`/admin`, sign in at `/admin/login`) — `admin` role
+  only. Everything: ads, tuk-tuks, groups, drivers, marquee, statistics, plus
+  **Sales team** (create rep logins, see who's online, their leads, contracts,
+  revenue and online hours), **Leads** (everyone's, reassignable),
+  **Clients** and **Packages**.
+- **Sales portal** (`/sales`, sign in at `/sales/login`) — `sales` role (admins
+  can open it too). Touch-first for tablets: home with monthly numbers and
+  follow-ups, a customer-facing **Pitch** screen (live fleet numbers, ads
+  running now, packages, plain-language terms, full-screen mode), **Leads**
+  with an activity timeline, **Sign client** (contract signed on the tablet,
+  pre-filled from a lead or package) and **My clients**.
+
+Sales accounts are created in Admin → Sales team with a **username** and
+password — no email needed (behind the scenes the username maps to
+`<username>@staff.villagemedia.local`). This needs the `manage-staff` edge
+function deployed:
+
+```bash
+npx supabase functions deploy manage-staff --project-ref <your-ref>
+```
+
+For an existing database, run **section 14** of `supabase/schema.sql` once.
+It also closes a hole where any signed-in user could edit their own role.
+
 ## 3. Run it
 
 ```bash

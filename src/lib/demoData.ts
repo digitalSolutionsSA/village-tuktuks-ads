@@ -37,6 +37,11 @@ export const DEMO_PROFILE: Profile = {
   email: 'demo@village-tuktuks.example',
   display_name: 'Demo Advertiser',
   role: 'admin',
+  username: 'demo',
+  phone: null,
+  active: true,
+  last_seen_at: null,
+  monthly_target: null,
   created_at: new Date().toISOString(),
 }
 

@@ -1,19 +1,20 @@
 // Village Media Digital In-Vehicle Advertising Services Agreement.
-// Source: Village_Media_Digital_Advertising_Agreement_Draft.docx — keep this in
-// sync with the signed-off legal version.
+// Source: Village_Media_Digital_Advertising_Agreement_Updated_Oct2026.pdf (final) — keep
+// this in sync with the signed-off legal version.
 
 /**
- * The source document is marked "DRAFT FOR ATTORNEY REVIEW - NOT FOR SIGNATURE
- * UNTIL LEGALLY REVIEWED". While true, the sign-up screen and every PDF carry
- * that warning. Set to false once the attorney has approved the wording.
+ * While true, the sign-up screen and every PDF carry a "DRAFT FOR ATTORNEY REVIEW"
+ * warning. The October 2026 version is final, so this is off.
  */
-export const AGREEMENT_IS_DRAFT = true
+export const AGREEMENT_IS_DRAFT = false
 
 /** Bump whenever the clause wording changes, so each PDF records which version was signed. */
-export const AGREEMENT_VERSION = '2026-10 draft'
+export const AGREEMENT_VERSION = '2026-10 final'
 
 export const VILLAGE_MEDIA = {
-  name: 'Village Media (Pty) Ltd',
+  name: 'Village Connect Media (Pty) Ltd',
+  /** Printed in the footer of every page. */
+  footerName: 'Village Connect Media (PTY ltd.) t/a Village Media',
   // Blank in the source document — fill in and they'll print on every new contract.
   registrationNo: '',
   businessAddress: 'Cnr Rooibok & Henley Drive, Highbury, Henley on Klip, 1961',
@@ -24,6 +25,9 @@ export const VILLAGE_MEDIA = {
 export const ADVERTISING_AREAS = ['Meyerton', 'Vanderbijlpark', 'Heidelberg', 'Walkerville'] as const
 
 export const DEFAULT_AD_DURATION = '10 seconds, unless otherwise agreed in writing'
+
+/** Fixed by clause 10.1, so it is not editable per client. */
+export const INITIAL_TERM = '12 months from Campaign Start Date'
 
 export const VAT_OPTIONS = [
   { value: 'inclusive', label: 'Inclusive' },
@@ -41,7 +45,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
   {
     title: '3. BACKGROUND',
     clauses: [
-      '3.1 Village Media (Pty) Ltd ("Village Media" or the "Service Provider") provides digital advertising and media services.',
+      '3.1 Village Connect Media (Pty) Ltd ("Village Media" or the "Service Provider") provides digital advertising and media services.',
       '3.2 Village Media operates a digital advertising network utilising screens installed in participating Village Tuk passenger vehicles and may, from time to time, use other approved participating vehicles, locations or digital displays.',
       '3.3 The Client wishes to advertise its business, products, services or brand through the Village Media digital advertising network, and the parties wish to regulate that relationship on the terms set out below.',
     ],
@@ -96,7 +100,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
     title: '9. FEES AND PAYMENT',
     clauses: [
       '9.1 The Client must pay the monthly advertising fee specified in the Campaign Schedule or applicable written quotation.',
-      '9.2 Unless otherwise agreed in writing, monthly advertising fees are payable in advance on or before the first day of each campaign month.',
+      '9.2 Monthly advertising fees are payable in advance on or before the 25th day of each month for the following month of advertising, unless otherwise agreed in writing.',
       "9.3 Payment must be made by EFT to the bank account stated on the Service Provider's valid invoice. The Client should verify any notified change of banking details using a known contact channel before payment.",
       '9.4 If an amount remains unpaid after its due date, the Service Provider may, subject to applicable law and any required notice, suspend or pause the campaign until the account is brought up to date.',
       '9.5 Suspension for non-payment does not waive amounts lawfully due under this Agreement.',
@@ -105,9 +109,9 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
   {
     title: '10. TERM, RENEWAL AND CANCELLATION',
     clauses: [
-      '10.1 The initial term is the period stated in the Campaign Schedule. If no fixed initial term is inserted, the campaign will operate month-to-month.',
-      "10.2 After expiry of any fixed initial term, the Agreement will continue month-to-month unless either party gives thirty (30) days' written notice, subject to applicable law.",
-      "10.3 If the Client cancels a fixed-term agreement before expiry, any cancellation charge will be a reasonable charge determined with regard to applicable law, the remaining term, discounts granted, costs already incurred, campaign preparation and the Service Provider's ability to mitigate its loss. Nothing in this clause limits any right the Client has under applicable consumer law.",
+      '10.1 The initial fixed term of this Agreement is twelve (12) months from the Campaign Start Date stated in the Campaign Schedule.',
+      "10.2 After expiry of the initial twelve (12) month term, this Agreement will continue on a month-to-month basis unless either party gives thirty (30) days' written notice of cancellation.",
+      '10.3 If the Client cancels this Agreement before the end of the initial twelve (12) month term, the Client shall pay a cancellation fee equal to fifty percent (50%) of the total monthly advertising fees remaining for the unexpired portion of that initial term. This fee is in addition to any unpaid fees already due. The application of this clause remains subject to any mandatory applicable law.',
       '10.4 The Service Provider may terminate or suspend the Agreement for material breach, non-payment, unlawful advertising content or serious reputational risk, subject to any notice or remedy period required by applicable law.',
     ],
   },

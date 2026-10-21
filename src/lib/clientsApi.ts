@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabase } from './supabase'
 import { agreementFileName, buildAgreementPdf, type AgreementPdfInput } from './agreementPdf'
+import { markLeadSigned } from './salesApi'
 import type { Client, ClientAgreementWithClient } from '../types'
 
 const DEMO_ERROR = 'Demo mode — connect Supabase (see README) to sign up real clients.'
@@ -11,6 +12,7 @@ const blank = (v: string) => v.trim() || null
 
 export interface SignedAgreementResult {
   agreementId: string
+  clientId: string
   pdf: Blob
   fileName: string
 }
@@ -21,6 +23,8 @@ export interface SignedAgreementResult {
  */
 export async function createSignedAgreement(
   input: Omit<AgreementPdfInput, 'agreementId' | 'signedAt'>,
+  /** The lead being signed, if any — it is marked won and linked to the new client. */
+  leadId?: string | null,
 ): Promise<SignedAgreementResult> {
   if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
   const { data: auth } = await supabase.auth.getUser()
@@ -72,24 +76,36 @@ export async function createSignedAgreement(
     vm_signer_capacity: blank(vmSigner.capacity),
     signed_at: signedAt.toISOString(),
     pdf_path: pdfPath,
+    lead_id: leadId ?? null,
     created_by: uid,
   })
   if (agreementError) throw agreementError
 
+  const clientId = (clientRow as Client).id
+  if (leadId) {
+    // The contract is already saved — a failure here must not look like a failed signing.
+    await markLeadSigned(leadId, clientId, client.company_name || client.legal_name).catch((err) =>
+      console.error('[clients] failed to update lead', err),
+    )
+  }
+
   return {
     agreementId,
+    clientId,
     pdf,
     fileName: agreementFileName(client.company_name || client.legal_name, signedAt),
   }
 }
 
 /** Admins see every agreement; sales staff only the ones they signed up (enforced by RLS). */
-export async function listAgreements(): Promise<ClientAgreementWithClient[]> {
+export async function listAgreements(createdBy?: string): Promise<ClientAgreementWithClient[]> {
   if (!isSupabaseConfigured) return []
-  const { data, error } = await supabase
+  let q = supabase
     .from('client_agreements')
     .select('*, client:clients(*)')
     .order('signed_at', { ascending: false })
+  if (createdBy) q = q.eq('created_by', createdBy)
+  const { data, error } = await q
   if (error) throw error
   return (data as ClientAgreementWithClient[]) ?? []
 }

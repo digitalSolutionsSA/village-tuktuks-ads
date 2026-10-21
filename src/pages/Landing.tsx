@@ -15,9 +15,14 @@ export function Landing() {
         🚖 Sign in as Tuk-Tuk Driver
       </Link>
 
-      <Link to="/admin/login" className="text-sm text-zinc-500 hover:text-zinc-300 hover:underline">
-        Admin sign in
-      </Link>
+      <div className="flex gap-6 text-sm text-zinc-500">
+        <Link to="/sales/login" className="hover:text-zinc-300 hover:underline">
+          Sales team sign in
+        </Link>
+        <Link to="/admin/login" className="hover:text-zinc-300 hover:underline">
+          Management sign in
+        </Link>
+      </div>
     </div>
   )
 }

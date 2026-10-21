@@ -574,3 +574,169 @@ create policy "signed-contracts: admin deletes" on storage.objects for delete
 -- 13. Tuk-tuk nicknames (e.g. the owner's name)
 -- ============================================================
 alter table public.tuktuks add column if not exists nickname text;
+
+-- ============================================================
+-- 14. Management & sales team portals
+-- ============================================================
+-- Existing projects: run just this section in the SQL Editor. It is safe to
+-- re-run.
+--
+-- Roles: "admin" = Village Media management (full access, incl. tuk-tuks,
+-- ads and drivers). "sales" = sales reps (sales portal only: pitch, leads,
+-- packages, contract sign-up, their own clients). Sales accounts are created
+-- from Admin -> Sales team (username + password) via the manage-staff edge
+-- function.
+
+alter table public.profiles add column if not exists username text;
+alter table public.profiles add column if not exists phone text;
+alter table public.profiles add column if not exists active boolean not null default true;
+alter table public.profiles add column if not exists last_seen_at timestamptz;
+alter table public.profiles add column if not exists monthly_target int;
+create unique index if not exists profiles_username_key on public.profiles (lower(username));
+
+-- SECURITY FIX: the old "update own" policy let any signed-in user change
+-- their own role (e.g. promote themselves to admin). Profiles are now only
+-- edited by admins; reps' online status goes through staff_heartbeat().
+drop policy if exists "profiles: update own" on public.profiles;
+drop policy if exists "profiles: admin updates" on public.profiles;
+create policy "profiles: admin updates" on public.profiles for update
+  using (public.is_admin(auth.uid())) with check (public.is_admin(auth.uid()));
+
+-- Deactivated staff lose access immediately, even with a still-valid session.
+create or replace function public.is_admin(uid uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.profiles where id = uid and role = 'admin' and active); $$;
+
+create or replace function public.is_staff(uid uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.profiles where id = uid and role in ('admin', 'sales') and active); $$;
+
+-- Online periods. A heartbeat every minute extends the current session; a gap
+-- of more than 5 minutes starts a new one.
+create table if not exists public.staff_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  started_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  ended_at timestamptz
+);
+create index if not exists staff_sessions_user_idx on public.staff_sessions (user_id, last_seen_at desc);
+alter table public.staff_sessions enable row level security;
+drop policy if exists "staff_sessions: own or admin reads" on public.staff_sessions;
+create policy "staff_sessions: own or admin reads" on public.staff_sessions for select
+  using (user_id = auth.uid() or public.is_admin(auth.uid()));
+
+create or replace function public.staff_heartbeat()
+returns void language plpgsql security definer set search_path = public
+as $$
+declare v_id uuid;
+begin
+  if not public.is_staff(auth.uid()) then return; end if;
+  update public.profiles set last_seen_at = now() where id = auth.uid();
+  select id into v_id from public.staff_sessions
+    where user_id = auth.uid() and ended_at is null and last_seen_at > now() - interval '5 minutes'
+    order by last_seen_at desc limit 1;
+  if v_id is null then
+    insert into public.staff_sessions (user_id) values (auth.uid());
+  else
+    update public.staff_sessions set last_seen_at = now() where id = v_id;
+  end if;
+end;
+$$;
+
+create or replace function public.staff_sign_out()
+returns void language sql security definer set search_path = public
+as $$
+  update public.staff_sessions set ended_at = now(), last_seen_at = now()
+    where user_id = auth.uid() and ended_at is null;
+$$;
+
+revoke execute on function public.staff_heartbeat() from public, anon;
+revoke execute on function public.staff_sign_out() from public, anon;
+grant execute on function public.staff_heartbeat() to authenticated;
+grant execute on function public.staff_sign_out() to authenticated;
+
+-- Packages reps can pitch and pre-select on the contract.
+create table if not exists public.sales_packages (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  monthly_fee numeric(12, 2),
+  areas text[] not null default '{}',
+  features text[] not null default '{}',
+  sort_order int not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table public.sales_packages enable row level security;
+drop policy if exists "sales_packages: staff reads" on public.sales_packages;
+drop policy if exists "sales_packages: admin manages" on public.sales_packages;
+create policy "sales_packages: staff reads" on public.sales_packages for select using (public.is_staff(auth.uid()));
+create policy "sales_packages: admin manages" on public.sales_packages for all
+  using (public.is_admin(auth.uid())) with check (public.is_admin(auth.uid()));
+
+-- Leads (prospects). Reps see and work their own; admins see everyone's.
+create table if not exists public.leads (
+  id uuid primary key default gen_random_uuid(),
+  business_name text not null,
+  contact_name text,
+  phone text,
+  email text,
+  address text,
+  area text,
+  status text not null default 'new'
+    check (status in ('new', 'contacted', 'meeting', 'proposal', 'won', 'lost')),
+  source text,
+  notes text,
+  follow_up_date date,
+  estimated_value numeric(12, 2),
+  client_id uuid references public.clients (id) on delete set null,
+  owner_id uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists leads_owner_idx on public.leads (owner_id, updated_at desc);
+alter table public.leads enable row level security;
+drop policy if exists "leads: owner or admin reads" on public.leads;
+drop policy if exists "leads: staff inserts own" on public.leads;
+drop policy if exists "leads: owner or admin updates" on public.leads;
+drop policy if exists "leads: owner or admin deletes" on public.leads;
+create policy "leads: owner or admin reads" on public.leads for select
+  using (public.is_admin(auth.uid()) or (owner_id = auth.uid() and public.is_staff(auth.uid())));
+create policy "leads: staff inserts own" on public.leads for insert
+  with check (public.is_admin(auth.uid()) or (owner_id = auth.uid() and public.is_staff(auth.uid())));
+-- Reps cannot hand their leads to someone else; only admins reassign.
+create policy "leads: owner or admin updates" on public.leads for update
+  using (public.is_admin(auth.uid()) or (owner_id = auth.uid() and public.is_staff(auth.uid())))
+  with check (public.is_admin(auth.uid()) or owner_id = auth.uid());
+create policy "leads: owner or admin deletes" on public.leads for delete
+  using (public.is_admin(auth.uid()) or (owner_id = auth.uid() and public.is_staff(auth.uid())));
+
+create or replace function public.touch_updated_at()
+returns trigger language plpgsql set search_path = public as $$ begin new.updated_at = now(); return new; end; $$;
+drop trigger if exists leads_touch on public.leads;
+create trigger leads_touch before update on public.leads
+  for each row execute procedure public.touch_updated_at();
+
+-- Lead timeline: notes, calls, visits, status changes and signed contracts.
+create table if not exists public.lead_events (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid not null references public.leads (id) on delete cascade,
+  user_id uuid references public.profiles (id) on delete set null default auth.uid(),
+  kind text not null check (kind in ('note', 'call', 'visit', 'status', 'signed')),
+  body text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists lead_events_lead_idx on public.lead_events (lead_id, created_at desc);
+alter table public.lead_events enable row level security;
+drop policy if exists "lead_events: visible with lead" on public.lead_events;
+drop policy if exists "lead_events: staff adds to visible lead" on public.lead_events;
+-- The subquery runs under leads' own RLS, so events follow lead visibility.
+create policy "lead_events: visible with lead" on public.lead_events for select
+  using (exists (select 1 from public.leads l where l.id = lead_id));
+create policy "lead_events: staff adds to visible lead" on public.lead_events for insert
+  with check (user_id = auth.uid() and public.is_staff(auth.uid())
+    and exists (select 1 from public.leads l where l.id = lead_id));
+
+-- Which lead a signed agreement came from (for conversion tracking).
+alter table public.client_agreements add column if not exists lead_id uuid references public.leads (id) on delete set null;

@@ -5,6 +5,7 @@ import {
   AGREEMENT_SECTIONS,
   AGREEMENT_VERSION,
   DEFAULT_AD_DURATION,
+  INITIAL_TERM,
   SIGNATURE_DECLARATION,
   VAT_OPTIONS,
   VILLAGE_MEDIA,
@@ -220,7 +221,7 @@ export async function buildAgreementPdf(input: AgreementPdfInput): Promise<Blob>
     VAT_OPTIONS.map((o) => ({ label: o.label, checked: schedule.vat === o.value })),
   )
   row('Campaign Start Date', schedule.campaign_start)
-  row('Initial Term', schedule.initial_term || 'Month-to-month')
+  row('Initial Term', schedule.initial_term || INITIAL_TERM)
   row('Selected Package / Notes', schedule.package_notes)
 
   // ---- 3–19. Terms ----
@@ -268,8 +269,13 @@ function addFooters(doc: JsPdf, agreementId: string) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(120)
-    doc.text(`Ref ${agreementId} · Terms version ${AGREEMENT_VERSION}`, MARGIN, PAGE_H - 10)
-    doc.text(`Page ${i} of ${pages}`, PAGE_W - MARGIN, PAGE_H - 10, { align: 'right' })
+    doc.text(
+      `${VILLAGE_MEDIA.footerName} - Digital Advertising Services Agreement | Page ${i} of ${pages}`,
+      PAGE_W / 2,
+      PAGE_H - 13,
+      { align: 'center' },
+    )
+    doc.text(`Ref ${agreementId} · Terms version ${AGREEMENT_VERSION}`, PAGE_W / 2, PAGE_H - 9, { align: 'center' })
     doc.setTextColor(0)
   }
 }

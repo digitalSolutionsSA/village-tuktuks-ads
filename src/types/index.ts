@@ -5,6 +5,76 @@ export interface Profile {
   email: string
   display_name: string | null
   role: UserRole
+  /** Sign-in name for staff accounts created from Admin → Sales team. */
+  username: string | null
+  phone: string | null
+  active: boolean
+  last_seen_at: string | null
+  /** Contracts this rep aims to sign per month. */
+  monthly_target: number | null
+  created_at: string
+}
+
+/** One continuous online period for a staff member, built from minute-by-minute heartbeats. */
+export interface StaffSession {
+  id: string
+  user_id: string
+  started_at: string
+  last_seen_at: string
+  ended_at: string | null
+}
+
+export interface SalesPackage {
+  id: string
+  name: string
+  description: string | null
+  monthly_fee: number | null
+  areas: string[]
+  features: string[]
+  sort_order: number
+  active: boolean
+  created_at: string
+}
+
+export const LEAD_STATUSES = ['new', 'contacted', 'meeting', 'proposal', 'won', 'lost'] as const
+export type LeadStatus = (typeof LEAD_STATUSES)[number]
+
+export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  new: 'New',
+  contacted: 'Contacted',
+  meeting: 'Meeting set',
+  proposal: 'Proposal sent',
+  won: 'Signed',
+  lost: 'Lost',
+}
+
+export interface Lead {
+  id: string
+  business_name: string
+  contact_name: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  area: string | null
+  status: LeadStatus
+  source: string | null
+  notes: string | null
+  follow_up_date: string | null
+  estimated_value: number | null
+  client_id: string | null
+  owner_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type LeadEventKind = 'note' | 'call' | 'visit' | 'status' | 'signed'
+
+export interface LeadEvent {
+  id: string
+  lead_id: string
+  user_id: string | null
+  kind: LeadEventKind
+  body: string
   created_at: string
 }
 
@@ -158,6 +228,8 @@ export interface ClientAgreement {
   signed_at: string
   pdf_path: string | null
   emailed_at: string | null
+  /** The lead this contract was signed from, if any. */
+  lead_id: string | null
   created_by: string | null
   created_at: string
 }

@@ -15,6 +15,16 @@ import { Marquee } from './pages/admin/Marquee'
 import { Statistics } from './pages/admin/Statistics'
 import { Clients } from './pages/admin/Clients'
 import { ClientSignup } from './pages/admin/ClientSignup'
+import { SalesTeam } from './pages/admin/SalesTeam'
+import { SalesRepDetail } from './pages/admin/SalesRepDetail'
+import { Packages } from './pages/admin/Packages'
+import { SalesLayout } from './components/SalesLayout'
+import { SalesHome } from './pages/sales/SalesHome'
+import { Pitch } from './pages/sales/Pitch'
+import { Projection } from './pages/sales/Projection'
+import { Leads } from './pages/sales/Leads'
+import { LeadDetail } from './pages/sales/LeadDetail'
+import { Account } from './pages/Account'
 import { Player } from './pages/player/Player'
 
 function App() {
@@ -27,11 +37,12 @@ function App() {
         <Route path="/player" element={<Player />} />
 
         <Route path="/admin/login" element={<Login />} />
+        <Route path="/sales/login" element={<Login variant="sales" />} />
 
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute roles={['admin']}>
               <AdminLayout />
             </ProtectedRoute>
           }
@@ -48,6 +59,31 @@ function App() {
           <Route path="statistics" element={<Statistics />} />
           <Route path="clients" element={<Clients />} />
           <Route path="clients/new" element={<ClientSignup />} />
+          <Route path="sales-team" element={<SalesTeam />} />
+          <Route path="sales-team/:id" element={<SalesRepDetail />} />
+          <Route path="leads" element={<Leads />} />
+          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="packages" element={<Packages />} />
+          <Route path="signup" element={<ClientSignup />} />
+          <Route path="account" element={<Account />} />
+        </Route>
+
+        <Route
+          path="/sales"
+          element={
+            <ProtectedRoute roles={['sales', 'admin']} loginPath="/sales/login">
+              <SalesLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<SalesHome />} />
+          <Route path="pitch" element={<Pitch />} />
+          <Route path="projection" element={<Projection />} />
+          <Route path="leads" element={<Leads />} />
+          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="signup" element={<ClientSignup />} />
+          <Route path="clients" element={<Clients />} />
+          <Route path="account" element={<Account />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { emailAgreement, getAgreementPdfUrl, listAgreements } from '../../lib/clientsApi'
 import { agreementFileName } from '../../lib/agreementPdf'
 import { useAuth } from '../../context/AuthContext'
-import type { ClientAgreementWithClient } from '../../types'
+import { listStaff, staffName } from '../../lib/staffApi'
+import type { ClientAgreementWithClient, Profile } from '../../types'
 
 export function Clients() {
   const { profile } = useAuth()
+  const inSales = useLocation().pathname.startsWith('/sales')
+  const isAdmin = profile?.role === 'admin'
+  const [staff, setStaff] = useState<Map<string, Profile>>(new Map())
   const [agreements, setAgreements] = useState<ClientAgreementWithClient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -15,11 +19,17 @@ export function Clients() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    listAgreements()
+    if (isAdmin && !inSales) {
+      listStaff()
+        .then((list) => setStaff(new Map(list.map((p) => [p.id, p]))))
+        .catch(() => {})
+    }
+    // In the sales portal, admins see their own clients like any rep would.
+    listAgreements(inSales ? profile?.id : undefined)
       .then(setAgreements)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load clients.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [inSales, isAdmin, profile?.id])
 
   const openPdf = async (a: ClientAgreementWithClient, download: boolean) => {
     if (!a.pdf_path) return
@@ -72,14 +82,14 @@ export function Clients() {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-white">Clients</h1>
         <Link
-          to="/admin/clients/new"
+          to={inSales ? '/sales/signup' : '/admin/clients/new'}
           className="rounded-lg bg-purple-500 px-5 py-3 text-sm font-medium text-white hover:bg-purple-400"
         >
           + New client
         </Link>
       </div>
       <p className="mb-6 text-sm text-zinc-400">
-        {profile?.role === 'admin'
+        {isAdmin && !inSales
           ? 'Every signed advertising agreement, from all sales staff.'
           : 'Clients you have signed up.'}
       </p>
@@ -118,6 +128,7 @@ export function Clients() {
                       {a.monthly_fee !== null && `R ${Number(a.monthly_fee).toLocaleString('en-ZA')} /month · `}
                       {areas || 'No area'} · Signed {new Date(a.signed_at).toLocaleDateString('en-ZA')} by{' '}
                       {a.vm_signer_name}
+                      {staff.size > 0 && a.created_by && ` (rep: ${staffName(staff.get(a.created_by))})`}
                       {a.emailed_at && ' · Emailed'}
                     </p>
                   </div>

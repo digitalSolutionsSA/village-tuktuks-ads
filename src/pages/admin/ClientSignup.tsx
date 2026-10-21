@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { SignaturePad, type SignaturePadHandle } from '../../components/SignaturePad'
 import {
@@ -7,12 +7,15 @@ import {
   AGREEMENT_IS_DRAFT,
   AGREEMENT_SECTIONS,
   DEFAULT_AD_DURATION,
+  INITIAL_TERM,
   SIGNATURE_DECLARATION,
   VAT_OPTIONS,
   VILLAGE_MEDIA,
 } from '../../lib/agreementText'
 import { createSignedAgreement, downloadBlob, emailAgreement } from '../../lib/clientsApi'
 import type { AgreementPdfInput } from '../../lib/agreementPdf'
+import { formatRand, getLead, listPackages } from '../../lib/salesApi'
+import type { Lead, SalesPackage } from '../../types'
 
 type ClientDetails = AgreementPdfInput['client']
 type Schedule = AgreementPdfInput['schedule']
@@ -41,7 +44,7 @@ const emptySchedule = (): Schedule => ({
   monthly_fee: '',
   vat: '',
   campaign_start: '',
-  initial_term: '',
+  initial_term: INITIAL_TERM,
   package_notes: '',
 })
 
@@ -62,6 +65,12 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 export function ClientSignup() {
   const { profile } = useAuth()
+  // Shared by both portals; links stay inside whichever one we're in.
+  const base = useLocation().pathname.startsWith('/sales') ? '/sales' : '/admin'
+  const [params] = useSearchParams()
+  const [lead, setLead] = useState<Lead | null>(null)
+  const [packages, setPackages] = useState<SalesPackage[]>([])
+  const [packageId, setPackageId] = useState<string | null>(null)
   const [step, setStep] = useState(0)
   const [client, setClient] = useState<ClientDetails>(emptyClient)
   const [schedule, setSchedule] = useState<Schedule>(emptySchedule)
@@ -80,6 +89,48 @@ export function ClientSignup() {
 
   const setC = (k: keyof ClientDetails, v: string) => setClient((c) => ({ ...c, [k]: v }))
   const setS = <K extends keyof Schedule>(k: K, v: Schedule[K]) => setSchedule((s) => ({ ...s, [k]: v }))
+
+  const applyPackage = (p: SalesPackage) => {
+    setPackageId(p.id)
+    setSchedule((s) => ({
+      ...s,
+      areas: p.areas.length ? p.areas.filter((a) => (ADVERTISING_AREAS as readonly string[]).includes(a)) : s.areas,
+      monthly_fee: p.monthly_fee !== null ? String(p.monthly_fee) : s.monthly_fee,
+      package_notes: p.name + (p.description ? ` — ${p.description}` : ''),
+    }))
+  }
+
+  // ?lead=<id> pre-fills the client from a lead; ?package=<id> pre-selects a package from the pitch.
+  const leadParam = params.get('lead')
+  const packageParam = params.get('package')
+  useEffect(() => {
+    listPackages()
+      .then((list) => {
+        setPackages(list)
+        const p = packageParam && list.find((x) => x.id === packageParam)
+        if (p) applyPackage(p)
+      })
+      .catch(() => {})
+    if (!leadParam) return
+    getLead(leadParam)
+      .then((l) => {
+        if (!l) return
+        setLead(l)
+        setClient((c) => ({
+          ...c,
+          legal_name: c.legal_name || l.business_name,
+          company_name: c.company_name || l.business_name,
+          email: c.email || l.email || '',
+          telephone: c.telephone || l.phone || '',
+          physical_address: c.physical_address || l.address || '',
+          authorised_rep: c.authorised_rep || l.contact_name || '',
+        }))
+        const area = ADVERTISING_AREAS.find((a) => a.toLowerCase() === l.area?.toLowerCase())
+        if (area) setSchedule((s) => (s.areas.length ? s : { ...s, areas: [area] }))
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadParam, packageParam])
 
   const emailValid = /^\S+@\S+\.\S+$/.test(client.email.trim())
   const canContinue = [
@@ -135,7 +186,7 @@ export function ClientSignup() {
         schedule,
         clientSigner: { ...clientSigner, signaturePng: clientSig },
         vmSigner: { ...vmSigner, signaturePng: padRef.current!.toPng() },
-      })
+      }, lead?.id)
       setResult(res)
       downloadBlob(res.pdf, res.fileName)
       void sendEmail(res.agreementId)
@@ -160,6 +211,8 @@ export function ClientSignup() {
     setAgreed(false)
     setClientSigner({ name: '', company: '', capacity: '' })
     setClientSig('')
+    setLead(null)
+    setPackageId(null)
     setResult(null)
     setEmailState('idle')
     setEmailError(null)
@@ -203,7 +256,7 @@ export function ClientSignup() {
           >
             Sign up another client
           </button>
-          <Link to="/admin/clients" className="rounded-lg px-4 py-3 text-zinc-400 hover:text-white">
+          <Link to={`${base}/clients`} className="rounded-lg px-4 py-3 text-zinc-400 hover:text-white">
             All clients
           </Link>
         </div>
@@ -215,10 +268,16 @@ export function ClientSignup() {
     <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">New client</h1>
-        <Link to="/admin/clients" className="text-sm text-zinc-400 hover:text-white">
+        <Link to={lead ? `${base}/leads/${lead.id}` : `${base}/clients`} className="text-sm text-zinc-400 hover:text-white">
           Cancel
         </Link>
       </div>
+      {lead && (
+        <p className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
+          Signing lead <span className="font-medium text-white">{lead.business_name}</span> — it will be
+          marked as signed once the contract is saved.
+        </p>
+      )}
 
       <ol className="mb-6 flex gap-1">
         {STEPS.map((label, i) => (
@@ -271,6 +330,25 @@ export function ClientSignup() {
 
       {step === 1 && (
         <div className="space-y-5">
+          {packages.length > 0 && (
+            <Field label="Package">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {packages.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyPackage(p)}
+                    className={`rounded-lg border px-4 py-3 text-left text-sm ${
+                      packageId === p.id ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    <span className="block font-medium">{p.name}</span>
+                    <span className="text-xs text-zinc-400">{formatRand(p.monthly_fee)} /month</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
           <Field label="Advertising area(s)" required>
             <div className="flex flex-wrap gap-2">
               {ADVERTISING_AREAS.map((area) => {
@@ -323,7 +401,7 @@ export function ClientSignup() {
               <input type="date" className={inputClass} value={schedule.campaign_start} onChange={(e) => setS('campaign_start', e.target.value)} />
             </Field>
             <Field label="Initial term">
-              <input className={inputClass} placeholder="e.g. 6 months (empty = month-to-month)" value={schedule.initial_term} onChange={(e) => setS('initial_term', e.target.value)} />
+              <input className={`${inputClass} opacity-70`} value={INITIAL_TERM} readOnly />
             </Field>
           </div>
           <Field label="Selected package / notes">
