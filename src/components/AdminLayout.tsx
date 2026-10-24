@@ -1,57 +1,88 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { isSuperAdmin, useAuth } from '../context/AuthContext'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { ThemeToggle } from './ThemeToggle'
+import { useTheme } from '../hooks/useTheme'
 import { isSupabaseConfigured } from '../lib/supabase'
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
-  `rounded-lg px-3 py-2 text-sm font-medium transition ${
-    isActive ? 'bg-white text-zinc-900' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+  `shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+    isActive ? 'bg-brand-500 text-on-accent' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
   }`
 
-const FLEET_LINKS = [
-  { to: '/admin', label: 'Dashboard', end: true },
+interface NavItem {
+  to: string
+  label: string
+  end?: boolean
+}
+
+/** Everything sales people do. Main admins get these too. */
+const SALES_LINKS: NavItem[] = [
+  { to: '/admin', label: '▶ Pitch', end: true },
+  { to: '/admin/leads', label: 'Leads' },
+  { to: '/admin/signup', label: 'Sign client' },
+  { to: '/admin/clients', label: 'Clients' },
   { to: '/admin/ads', label: 'Ads' },
-  { to: '/admin/tuktuks', label: 'Tuk-Tuks' },
-  { to: '/admin/groups', label: 'Groups' },
-  { to: '/admin/drivers', label: 'Drivers' },
-  { to: '/admin/marquee', label: 'Marquee' },
   { to: '/admin/statistics', label: 'Statistics' },
 ]
 
-const SALES_LINKS = [
+/** Main admins only. */
+const SUPER_ADMIN_LINKS: NavItem[] = [
   { to: '/admin/sales-team', label: 'Sales team' },
-  { to: '/admin/leads', label: 'Leads' },
-  { to: '/admin/clients', label: 'Clients' },
-  { to: '/admin/packages', label: 'Packages' },
+  { to: '/admin/commissions', label: 'Commissions' },
+  { to: '/admin/finance', label: 'Finance' },
+  { to: '/admin/tuktuks', label: 'Tuk-tuks & areas' },
+  { to: '/admin/logs', label: 'Logs' },
 ]
 
-/** Village Media management portal — admins only (see ProtectedRoute in App.tsx). */
+const Divider = () => <span className="mx-2 h-5 w-px shrink-0 bg-zinc-800" aria-hidden />
+
+/**
+ * The one Village Media portal for all staff — sales reps and management alike.
+ * Home is the customer-facing pitch, so a rep can open it and stay there at a customer's premises.
+ */
 export function AdminLayout() {
   const { profile, signOut } = useAuth()
+  const superAdmin = isSuperAdmin(profile)
+  const online = useOnlineStatus()
+  const { theme } = useTheme()
+  // The pitch (portal home) runs edge to edge; every other page sits in a centred column.
+  const fullBleed = useLocation().pathname.replace(/\/$/, '') === '/admin'
+
+  const groups = [SALES_LINKS, ...(superAdmin ? [SUPER_ADMIN_LINKS] : [])]
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <span className="text-sm font-semibold tracking-wide text-white">Village Media · Management</span>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-400">
+    <div data-theme={theme} className="min-h-screen bg-zinc-950 text-zinc-100">
+      <header className="sticky top-0 z-20 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
+        <div className="brand-stripe" aria-hidden />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-10">
+          <Link to="/admin" className="flex items-center gap-3">
+            <img src="/LOGO.png" alt="" className="h-11 w-auto" />
+            <span className="hidden text-sm font-semibold tracking-wide text-white sm:inline">Village Media</span>
+          </Link>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
             <a
               href="/player?preview"
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg border border-purple-500/50 px-3 py-1.5 text-purple-300 hover:bg-purple-500/10"
+              className="rounded-lg border border-brand-500/50 px-3 py-1.5 text-brand-300 hover:bg-brand-500/10"
             >
-              ▶ Preview player
+              ▶<span className="hidden sm:inline"> Preview player</span>
             </a>
             <NavLink
-              to="/sales"
-              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
+              to="/admin/account"
+              title="My account · change password"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 hover:text-white"
             >
-              Sales portal
+              <span className={`h-2 w-2 rounded-full ${online ? 'bg-green-500' : 'bg-zinc-600'}`} />
+              <span className="hidden max-w-[16rem] truncate md:inline">
+                {profile?.display_name || profile?.username || profile?.email}
+              </span>
+              <span className="hidden rounded bg-brand-500/20 px-1.5 py-0.5 text-xs text-brand-300 sm:inline">
+                {superAdmin ? 'management' : 'admin'}
+              </span>
             </NavLink>
-            <NavLink to="/admin/account" title="My account · change password" className="hover:text-white">
-              {profile?.display_name || profile?.username || profile?.email}
-              <span className="ml-2 rounded bg-purple-500/20 px-1.5 py-0.5 text-xs text-purple-300">admin</span>
-            </NavLink>
+            <ThemeToggle />
             <button
               onClick={() => signOut()}
               className="rounded-lg border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
@@ -60,17 +91,16 @@ export function AdminLayout() {
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-4 pb-3">
-          {FLEET_LINKS.map((l) => (
-            <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-              {l.label}
-            </NavLink>
-          ))}
-          <span className="mx-2 h-5 w-px bg-zinc-800" aria-hidden />
-          {SALES_LINKS.map((l) => (
-            <NavLink key={l.to} to={l.to} className={linkClass}>
-              {l.label}
-            </NavLink>
+        <nav className="flex items-center gap-1 overflow-x-auto px-4 pb-3 [scrollbar-width:none] sm:px-6 lg:px-10">
+          {groups.map((links, i) => (
+            <span key={i} className="contents">
+              {i > 0 && <Divider />}
+              {links.map((l) => (
+                <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+                  {l.label}
+                </NavLink>
+              ))}
+            </span>
           ))}
         </nav>
       </header>
@@ -81,7 +111,7 @@ export function AdminLayout() {
         </div>
       )}
 
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className={fullBleed ? '' : 'mx-auto max-w-6xl px-4 py-6'}>
         <Outlet />
       </main>
     </div>

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { StatCard } from '../../components/StatCard'
-import { useAuth } from '../../context/AuthContext'
 import { listAgreements } from '../../lib/clientsApi'
 import { computeStats, formatRand, listLeads } from '../../lib/salesApi'
 import {
   createStaff,
+  deleteStaff,
   formatDuration,
   isStaffOnline,
   listStaff,
@@ -19,7 +19,7 @@ import {
 import type { ClientAgreementWithClient, Lead, Profile, StaffSession } from '../../types'
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-400'
+  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-400'
 
 const emptyForm = (): NewStaffInput => ({
   username: '',
@@ -31,7 +31,6 @@ const emptyForm = (): NewStaffInput => ({
 })
 
 export function SalesTeam() {
-  const { profile: me } = useAuth()
   const [staff, setStaff] = useState<Profile[]>([])
   const [sessions, setSessions] = useState<StaffSession[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
@@ -96,7 +95,7 @@ export function SalesTeam() {
     try {
       await createStaff(form)
       setNotice(
-        `Account created. ${form.display_name} signs in at /sales/login with username "${form.username.trim().toLowerCase()}" and the password you set.`,
+        `Account created. ${form.display_name} signs in at /admin/login with username "${form.username.trim().toLowerCase()}" and the password you set.`,
       )
       setForm(emptyForm())
       setShowForm(false)
@@ -121,6 +120,20 @@ export function SalesTeam() {
     }
   }
 
+  const remove = async (p: Profile) => {
+    const name = p.display_name || p.username
+    if (!confirm(`Permanently delete ${name}? They can no longer sign in. Their clients, contracts and leads are kept, and they stay in the logs.`)) return
+    setError(null)
+    setNotice(null)
+    try {
+      await deleteStaff(p.id)
+      setNotice(`${name} was deleted.`)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete.')
+    }
+  }
+
   const toggleActive = async (p: Profile) => {
     const verb = p.active ? 'Deactivate' : 'Reactivate'
     if (!confirm(`${verb} ${p.display_name || p.username}? ${p.active ? 'They will be signed out and unable to log in.' : ''}`)) return
@@ -139,14 +152,23 @@ export function SalesTeam() {
         <h1 className="text-xl font-semibold text-white">Sales team</h1>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="rounded-lg bg-purple-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-purple-400"
+          className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-brand-400"
         >
           {showForm ? 'Close' : '+ Add salesperson'}
         </button>
       </div>
       <p className="mb-6 text-sm text-zinc-400">
-        Reps sign in at <span className="text-zinc-200">/sales/login</span> with the username you give them. They only
-        see the sales portal — never tuk-tuks, ads or drivers.
+        Salespeople sign in at <span className="text-zinc-200">/admin/login</span> with the username you give them.
+        They can pitch, add leads, sign up customers and send contracts, load ads, and see statistics — but can't
+        delete anything. Set what they earn under{' '}
+        <Link to="/admin/commissions" className="text-brand-300 hover:underline">
+          Commissions
+        </Link>{' '}
+        and follow what they do in the{' '}
+        <Link to="/admin/logs" className="text-brand-300 hover:underline">
+          Logs
+        </Link>
+        .
       </p>
 
       {showForm && (
@@ -180,15 +202,8 @@ export function SalesTeam() {
             Monthly target (contracts)
             <input inputMode="numeric" className={inputClass} value={form.monthly_target} onChange={(e) => setForm({ ...form, monthly_target: e.target.value.replace(/\D/g, '') })} />
           </label>
-          <label className="text-sm text-zinc-300">
-            Access
-            <select className={inputClass} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as NewStaffInput['role'] })}>
-              <option value="sales">Sales rep — sales portal only</option>
-              <option value="admin">Management — full access</option>
-            </select>
-          </label>
           <div className="flex justify-end sm:col-span-3">
-            <button disabled={saving} className="rounded-lg bg-purple-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-purple-400 disabled:opacity-50">
+            <button disabled={saving} className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-brand-400 disabled:opacity-50">
               {saving ? 'Creating…' : 'Create account'}
             </button>
           </div>
@@ -237,7 +252,7 @@ export function SalesTeam() {
                     </Link>
                     <p className="text-xs text-zinc-500">
                       {p.username ? `@${p.username}` : p.email}
-                      {p.role === 'admin' && <span className="ml-2 rounded bg-purple-500/20 px-1.5 text-purple-300">management</span>}
+                      {p.super_admin && <span className="ml-2 rounded bg-brand-500/20 px-1.5 text-brand-300">management</span>}
                     </p>
                   </td>
                   <td className="px-4 py-3">
@@ -260,13 +275,21 @@ export function SalesTeam() {
                   <td className="px-4 py-3 text-right text-zinc-400">{weekOnline ? formatDuration(weekOnline) : '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => resetPassword(p)} className="rounded border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">
-                        Reset password
-                      </button>
-                      {p.id !== me?.id && (
-                        <button onClick={() => toggleActive(p)} className="rounded border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">
-                          {p.active ? 'Deactivate' : 'Reactivate'}
-                        </button>
+                      <Link to={`/admin/sales-team/${p.id}`} className="rounded border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">
+                        Edit
+                      </Link>
+                      {!p.super_admin && (
+                        <>
+                          <button onClick={() => resetPassword(p)} className="rounded border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">
+                            Reset password
+                          </button>
+                          <button onClick={() => toggleActive(p)} className="rounded border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">
+                            {p.active ? 'Deactivate' : 'Reactivate'}
+                          </button>
+                          <button onClick={() => remove(p)} className="rounded border border-red-900/60 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-950/40">
+                            Delete
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>

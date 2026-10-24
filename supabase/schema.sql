@@ -740,3 +740,372 @@ create policy "lead_events: staff adds to visible lead" on public.lead_events fo
 
 -- Which lead a signed agreement came from (for conversion tracking).
 alter table public.client_agreements add column if not exists lead_id uuid references public.leads (id) on delete set null;
+
+-- ============================================================
+-- 15. Sales team = admins; super admins track sales performance
+-- ============================================================
+-- Existing projects: run just this section in the SQL Editor. It is safe to
+-- re-run.
+--
+-- Everyone on staff ("admin" or "sales") now has full admin access: tuk-tuks,
+-- ads, drivers, statistics, clients, contracts. On top of that, super admins
+-- (the three management accounts below) are the only ones who can add, edit,
+-- deactivate or delete staff, and see the sales performance page and the
+-- staff activity log.
+
+alter table public.profiles add column if not exists super_admin boolean not null default false;
+update public.profiles set super_admin = true, role = 'admin'
+  where lower(email) in ('info@digitalsolutionssa.co.za', 'jaco@agilegas.co.za', 'refiloe@agilegas.co.za', 'rephiloe@agilegas.co.za');
+
+create or replace function public.is_admin(uid uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.profiles where id = uid and role in ('admin', 'sales') and active); $$;
+
+create or replace function public.is_super_admin(uid uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.profiles where id = uid and super_admin and active); $$;
+
+-- Only super admins edit profiles (roles, targets, active flag).
+drop policy if exists "profiles: admin updates" on public.profiles;
+create policy "profiles: admin updates" on public.profiles for update
+  using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
+
+-- Online periods: your own, or everyone's for super admins.
+drop policy if exists "staff_sessions: own or admin reads" on public.staff_sessions;
+create policy "staff_sessions: own or admin reads" on public.staff_sessions for select
+  using (user_id = auth.uid() or public.is_super_admin(auth.uid()));
+
+-- Activity log: sign-ins, sign-outs, customers added, contracts signed, ads
+-- loaded. Written only by the functions/triggers below; read by super admins.
+create table if not exists public.staff_activity (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles (id) on delete set null,
+  -- Kept so the log still reads correctly after a person is deleted.
+  actor_name text,
+  action text not null,
+  summary text not null,
+  entity_type text,
+  entity_id text,
+  created_at timestamptz not null default now()
+);
+create index if not exists staff_activity_created_idx on public.staff_activity (created_at desc);
+create index if not exists staff_activity_user_idx on public.staff_activity (user_id, created_at desc);
+alter table public.staff_activity enable row level security;
+drop policy if exists "staff_activity: super admin reads" on public.staff_activity;
+create policy "staff_activity: super admin reads" on public.staff_activity for select
+  using (public.is_super_admin(auth.uid()));
+
+create or replace function public.log_staff_activity(
+  p_action text, p_summary text, p_entity_type text default null, p_entity_id text default null
+)
+returns void language plpgsql security definer set search_path = public
+as $$
+declare v_name text;
+begin
+  if auth.uid() is null or not public.is_staff(auth.uid()) then return; end if;
+  select coalesce(display_name, username, email) into v_name from public.profiles where id = auth.uid();
+  insert into public.staff_activity (user_id, actor_name, action, summary, entity_type, entity_id)
+    values (auth.uid(), v_name, p_action, p_summary, p_entity_type, p_entity_id);
+end;
+$$;
+-- Internal only: called from the triggers and RPCs below, never from the app.
+revoke execute on function public.log_staff_activity(text, text, text, text) from public, anon, authenticated;
+
+-- Called by the app right after a successful sign-in.
+create or replace function public.staff_sign_in()
+returns void language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_staff(auth.uid()) then return; end if;
+  update public.staff_sessions set ended_at = last_seen_at where user_id = auth.uid() and ended_at is null;
+  insert into public.staff_sessions (user_id) values (auth.uid());
+  update public.profiles set last_seen_at = now() where id = auth.uid();
+  perform public.log_staff_activity('sign_in', 'Signed in');
+end;
+$$;
+
+create or replace function public.staff_sign_out()
+returns void language plpgsql security definer set search_path = public
+as $$
+begin
+  update public.staff_sessions set ended_at = now(), last_seen_at = now()
+    where user_id = auth.uid() and ended_at is null;
+  perform public.log_staff_activity('sign_out', 'Signed out');
+end;
+$$;
+
+revoke execute on function public.staff_sign_in() from public, anon;
+revoke execute on function public.staff_sign_out() from public, anon;
+grant execute on function public.staff_sign_in() to authenticated;
+grant execute on function public.staff_sign_out() to authenticated;
+
+create or replace function public.trg_log_staff_activity()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare v_client text;
+begin
+  if TG_TABLE_NAME = 'clients' then
+    perform public.log_staff_activity('client_added',
+      'Added customer ' || coalesce(new.company_name, new.legal_name), 'client', new.id::text);
+  elsif TG_TABLE_NAME = 'client_agreements' then
+    select coalesce(company_name, legal_name) into v_client from public.clients where id = new.client_id;
+    perform public.log_staff_activity('contract_signed',
+      'Signed contract with ' || coalesce(v_client, 'a customer')
+        || coalesce(' · R' || to_char(new.monthly_fee, 'FM999G999G990D00') || '/month', ''),
+      'client', new.client_id::text);
+  elsif TG_TABLE_NAME = 'leads' then
+    if TG_OP = 'INSERT' then
+      perform public.log_staff_activity('lead_added', 'Added lead ' || new.business_name, 'lead', new.id::text);
+    elsif new.status is distinct from old.status then
+      perform public.log_staff_activity('lead_status',
+        new.business_name || ': ' || old.status || ' → ' || new.status, 'lead', new.id::text);
+    end if;
+  elsif TG_TABLE_NAME = 'creatives' then
+    if TG_OP = 'INSERT' then
+      perform public.log_staff_activity('ad_uploaded',
+        'Uploaded ad "' || new.title || '"' || coalesce(' for ' || new.advertiser_name, ''), 'ad', new.id::text);
+    elsif TG_OP = 'DELETE' then
+      perform public.log_staff_activity('ad_deleted', 'Deleted ad "' || old.title || '"', 'ad', old.id::text);
+      return old;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists clients_activity on public.clients;
+create trigger clients_activity after insert on public.clients
+  for each row execute procedure public.trg_log_staff_activity();
+drop trigger if exists client_agreements_activity on public.client_agreements;
+create trigger client_agreements_activity after insert on public.client_agreements
+  for each row execute procedure public.trg_log_staff_activity();
+drop trigger if exists leads_activity on public.leads;
+create trigger leads_activity after insert or update of status on public.leads
+  for each row execute procedure public.trg_log_staff_activity();
+drop trigger if exists creatives_activity on public.creatives;
+create trigger creatives_activity after insert or delete on public.creatives
+  for each row execute procedure public.trg_log_staff_activity();
+
+-- Ad assignments: one row per "put live" action is enough, so log the
+-- per-tuk-tuk / per-group inserts as a single line per statement.
+create or replace function public.trg_log_ad_assignment()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare r record;
+begin
+  for r in
+    select c.id, c.title, count(*) as n from new_rows nr join public.creatives c on c.id = nr.ad_id group by c.id, c.title
+  loop
+    perform public.log_staff_activity('ad_assigned',
+      'Put ad "' || r.title || '" live on ' || r.n || ' ' ||
+        case when TG_TABLE_NAME = 'ad_group_assignments' then 'group' else 'tuk-tuk' end ||
+        case when r.n = 1 then '' else 's' end,
+      'ad', r.id::text);
+  end loop;
+  return null;
+end;
+$$;
+drop trigger if exists ad_assignments_activity on public.ad_assignments;
+create trigger ad_assignments_activity after insert on public.ad_assignments
+  referencing new table as new_rows for each statement execute procedure public.trg_log_ad_assignment();
+drop trigger if exists ad_group_assignments_activity on public.ad_group_assignments;
+create trigger ad_group_assignments_activity after insert on public.ad_group_assignments
+  referencing new table as new_rows for each statement execute procedure public.trg_log_ad_assignment();
+
+-- ============================================================
+-- 16. Main admins vs sales people; commissions and finance
+-- ============================================================
+-- Existing projects: run just this section in the SQL Editor. It is safe to
+-- re-run.
+--
+-- Sales people: pitch, add leads, sign up customers, sign and send contracts,
+-- load ads for customers and choose which areas (groups) they show in,
+-- statistics, preview player. They can't delete leads, customers, contracts
+-- or ads, and can't change the fleet.
+-- Main admins (super admins): everything sales people can do, plus the sales
+-- team, logs, commission structures, finance (earnings, costs, payouts) and
+-- tuk-tuks / areas.
+
+-- Tuk-tuks and areas: main admins only.
+drop policy if exists "tuktuks: admin manages" on public.tuktuks;
+drop policy if exists "tuktuks: admin updates" on public.tuktuks;
+drop policy if exists "tuktuks: admin deletes" on public.tuktuks;
+create policy "tuktuks: admin manages" on public.tuktuks for insert with check (public.is_super_admin(auth.uid()));
+create policy "tuktuks: admin updates" on public.tuktuks for update
+  using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
+create policy "tuktuks: admin deletes" on public.tuktuks for delete using (public.is_super_admin(auth.uid()));
+
+drop policy if exists "tuktuk_groups: admin inserts" on public.tuktuk_groups;
+drop policy if exists "tuktuk_groups: admin updates" on public.tuktuk_groups;
+drop policy if exists "tuktuk_groups: admin deletes" on public.tuktuk_groups;
+create policy "tuktuk_groups: admin inserts" on public.tuktuk_groups for insert with check (public.is_super_admin(auth.uid()));
+create policy "tuktuk_groups: admin updates" on public.tuktuk_groups for update using (public.is_super_admin(auth.uid()));
+create policy "tuktuk_groups: admin deletes" on public.tuktuk_groups for delete using (public.is_super_admin(auth.uid()));
+
+-- Ads go live by area (group). Per-tuk-tuk placement, marquee, sidebar ads,
+-- packages and drivers have no screens in the app any more: main admins only.
+drop policy if exists "ad_assignments: admin manages" on public.ad_assignments;
+drop policy if exists "ad_assignments: admin updates" on public.ad_assignments;
+drop policy if exists "ad_assignments: admin deletes" on public.ad_assignments;
+create policy "ad_assignments: admin manages" on public.ad_assignments for insert with check (public.is_super_admin(auth.uid()));
+create policy "ad_assignments: admin updates" on public.ad_assignments for update using (public.is_super_admin(auth.uid()));
+create policy "ad_assignments: admin deletes" on public.ad_assignments for delete using (public.is_super_admin(auth.uid()));
+
+drop policy if exists "marquee_messages: admin inserts" on public.marquee_messages;
+drop policy if exists "marquee_messages: admin updates" on public.marquee_messages;
+drop policy if exists "marquee_messages: admin deletes" on public.marquee_messages;
+create policy "marquee_messages: admin inserts" on public.marquee_messages for insert with check (public.is_super_admin(auth.uid()));
+create policy "marquee_messages: admin updates" on public.marquee_messages for update using (public.is_super_admin(auth.uid()));
+create policy "marquee_messages: admin deletes" on public.marquee_messages for delete using (public.is_super_admin(auth.uid()));
+
+drop policy if exists "tuktuk_sidebar_ads: admin inserts" on public.tuktuk_sidebar_ads;
+drop policy if exists "tuktuk_sidebar_ads: admin updates" on public.tuktuk_sidebar_ads;
+drop policy if exists "tuktuk_sidebar_ads: admin deletes" on public.tuktuk_sidebar_ads;
+create policy "tuktuk_sidebar_ads: admin inserts" on public.tuktuk_sidebar_ads for insert with check (public.is_super_admin(auth.uid()));
+create policy "tuktuk_sidebar_ads: admin updates" on public.tuktuk_sidebar_ads for update using (public.is_super_admin(auth.uid()));
+create policy "tuktuk_sidebar_ads: admin deletes" on public.tuktuk_sidebar_ads for delete using (public.is_super_admin(auth.uid()));
+
+drop policy if exists "sales_packages: admin manages" on public.sales_packages;
+create policy "sales_packages: admin manages" on public.sales_packages for all
+  using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
+
+drop policy if exists "drivers: admin reads" on public.drivers;
+drop policy if exists "drivers: admin inserts" on public.drivers;
+drop policy if exists "drivers: admin updates" on public.drivers;
+drop policy if exists "drivers: admin deletes" on public.drivers;
+create policy "drivers: admin reads" on public.drivers for select using (public.is_super_admin(auth.uid()));
+create policy "drivers: admin inserts" on public.drivers for insert with check (public.is_super_admin(auth.uid()));
+create policy "drivers: admin updates" on public.drivers for update using (public.is_super_admin(auth.uid()));
+create policy "drivers: admin deletes" on public.drivers for delete using (public.is_super_admin(auth.uid()));
+
+-- Nothing a sales person adds can be deleted by them.
+drop policy if exists "leads: owner or admin deletes" on public.leads;
+create policy "leads: owner or admin deletes" on public.leads for delete using (public.is_super_admin(auth.uid()));
+drop policy if exists "clients: admin deletes" on public.clients;
+create policy "clients: admin deletes" on public.clients for delete using (public.is_super_admin(auth.uid()));
+drop policy if exists "client_agreements: admin deletes" on public.client_agreements;
+create policy "client_agreements: admin deletes" on public.client_agreements for delete using (public.is_super_admin(auth.uid()));
+drop policy if exists "creatives: admin deletes" on public.creatives;
+create policy "creatives: admin deletes" on public.creatives for delete using (public.is_super_admin(auth.uid()));
+drop policy if exists "creative-media: admin deletes" on storage.objects;
+create policy "creative-media: admin deletes" on storage.objects for delete
+  using (bucket_id = 'creative-media' and public.is_super_admin(auth.uid()));
+drop policy if exists "signed-contracts: admin deletes" on storage.objects;
+create policy "signed-contracts: admin deletes" on storage.objects for delete
+  using (bucket_id = 'signed-contracts' and public.is_super_admin(auth.uid()));
+
+-- Which customer an ad was loaded for.
+alter table public.creatives add column if not exists client_id uuid references public.clients (id) on delete set null;
+
+-- Commission structures. A structure pays either a percentage of the contract's
+-- monthly fee or a flat amount, for each of the first `months` months of the contract.
+create table if not exists public.commission_structures (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  kind text not null check (kind in ('percent', 'flat')),
+  rate numeric(12, 2) not null check (rate >= 0),
+  months int not null default 1 check (months between 1 and 60),
+  notes text,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table public.commission_structures enable row level security;
+drop policy if exists "commission_structures: main admins" on public.commission_structures;
+create policy "commission_structures: main admins" on public.commission_structures for all
+  using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
+
+alter table public.profiles add column if not exists commission_structure_id uuid
+  references public.commission_structures (id) on delete set null;
+
+-- Each contract keeps the commission terms in force when it was signed, so
+-- later changes to a structure never rewrite past earnings.
+alter table public.client_agreements add column if not exists commission_structure_id uuid
+  references public.commission_structures (id) on delete set null;
+alter table public.client_agreements add column if not exists commission_kind text check (commission_kind in ('percent', 'flat'));
+alter table public.client_agreements add column if not exists commission_rate numeric(12, 2);
+alter table public.client_agreements add column if not exists commission_months int;
+-- Set by a main admin when a customer stops advertising; earnings stop after it.
+alter table public.client_agreements add column if not exists ended_on date;
+
+create or replace function public.trg_agreement_commission()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare cs record;
+begin
+  select s.* into cs from public.profiles p join public.commission_structures s on s.id = p.commission_structure_id
+    where p.id = new.created_by;
+  -- Always taken from the signer's structure, never from what the app sends.
+  if found then
+    new.commission_structure_id := cs.id;
+    new.commission_kind := cs.kind;
+    new.commission_rate := cs.rate;
+    new.commission_months := cs.months;
+  else
+    new.commission_structure_id := null;
+    new.commission_kind := null;
+    new.commission_rate := null;
+    new.commission_months := null;
+  end if;
+  new.ended_on := null;
+  return new;
+end;
+$$;
+drop trigger if exists client_agreements_commission on public.client_agreements;
+create trigger client_agreements_commission before insert on public.client_agreements
+  for each row execute procedure public.trg_agreement_commission();
+
+-- Sales people may update their own contracts (e.g. when it is emailed), but only
+-- main admins can touch the commission terms or end a contract.
+create or replace function public.trg_agreement_guard()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_super_admin(auth.uid()) and (
+    new.commission_structure_id is distinct from old.commission_structure_id
+    or new.commission_kind is distinct from old.commission_kind
+    or new.commission_rate is distinct from old.commission_rate
+    or new.commission_months is distinct from old.commission_months
+    or new.ended_on is distinct from old.ended_on
+    or new.monthly_fee is distinct from old.monthly_fee
+    or new.created_by is distinct from old.created_by
+  ) then
+    raise exception 'Only main admins can change commission, fees or end dates on a contract.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists client_agreements_guard on public.client_agreements;
+create trigger client_agreements_guard before update on public.client_agreements
+  for each row execute procedure public.trg_agreement_guard();
+
+-- Commission paid out to sales people.
+create table if not exists public.payouts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles (id) on delete set null,
+  amount numeric(12, 2) not null check (amount > 0),
+  paid_on date not null default current_date,
+  note text,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists payouts_user_idx on public.payouts (user_id, paid_on desc);
+alter table public.payouts enable row level security;
+drop policy if exists "payouts: main admins" on public.payouts;
+create policy "payouts: main admins" on public.payouts for all
+  using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
+
+-- Running costs (fuel, data, driver fees, printing, ...), per month.
+create table if not exists public.costs (
+  id uuid primary key default gen_random_uuid(),
+  month date not null,
+  category text not null,
+  description text,
+  amount numeric(12, 2) not null check (amount > 0),
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists costs_month_idx on public.costs (month);
+alter table public.costs enable row level security;
+drop policy if exists "costs: main admins" on public.costs;
+create policy "costs: main admins" on public.costs for all
+  using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));

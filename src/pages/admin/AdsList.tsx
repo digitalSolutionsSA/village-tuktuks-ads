@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isSupabaseConfigured, supabase, MEDIA_BUCKET } from '../../lib/supabase'
 import { DEMO_ADS, demoTuktukIdsForAd } from '../../lib/demoData'
-import { useAuth } from '../../context/AuthContext'
+import { isSuperAdmin, useAuth } from '../../context/AuthContext'
 import type { Ad } from '../../types'
 
 export function AdsList() {
   const { profile } = useAuth()
+  // Sales people load and edit ads; only main admins delete them.
+  const canDelete = isSuperAdmin(profile)
   const [ads, setAds] = useState<Ad[]>([])
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({})
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({})
@@ -85,9 +87,9 @@ export function AdsList() {
         <h1 className="text-xl font-semibold text-white">Ads</h1>
         <Link
           to="/admin/ads/new"
-          className="rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white hover:bg-purple-400"
+          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-on-accent hover:bg-brand-400"
         >
-          Upload new ad
+          Load new ad
         </Link>
       </div>
 
@@ -132,8 +134,8 @@ export function AdsList() {
                 <p className="mb-3 text-xs">
                   {isLive ? (
                     <span className="text-emerald-400">
-                      ● Live on {directCount} tuk-tuk{directCount === 1 ? '' : 's'}
-                      {groupCount > 0 && ` + ${groupCount} group${groupCount === 1 ? '' : 's'}`}
+                      ● Live in {groupCount} area{groupCount === 1 ? '' : 's'}
+                      {directCount > 0 && ` + ${directCount} tuk-tuk${directCount === 1 ? '' : 's'}`}
                     </span>
                   ) : (
                     <span className="text-zinc-500">○ Not live yet</span>
@@ -144,14 +146,16 @@ export function AdsList() {
                     to={`/admin/ads/${ad.id}`}
                     className="flex-1 rounded-lg border border-zinc-700 py-1.5 text-center text-sm text-zinc-200 hover:bg-zinc-800"
                   >
-                    Edit / Go live
+                    Edit / Choose areas
                   </Link>
-                  <button
-                    onClick={() => handleDelete(ad)}
-                    className="rounded-lg border border-red-900 px-3 text-sm text-red-400 hover:bg-red-950"
-                  >
-                    Delete
-                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(ad)}
+                      className="rounded-lg border border-red-900 px-3 text-sm text-red-400 hover:bg-red-950"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

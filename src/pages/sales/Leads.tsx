@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { LEAD_STATUS_STYLES } from '../../components/StatCard'
-import { useAuth } from '../../context/AuthContext'
 import { formatRand, listLeads, todayIso } from '../../lib/salesApi'
 import { listStaff, staffName } from '../../lib/staffApi'
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type Lead, type LeadStatus, type Profile } from '../../types'
 
-/** Lead list. In the sales portal: the rep's own leads. In management: everyone's, filterable by rep. */
+/** Everyone's leads, filterable by rep. */
 export function Leads() {
-  const { profile } = useAuth()
-  const inSales = useLocation().pathname.startsWith('/sales')
-  const base = inSales ? '/sales' : '/admin'
   const [leads, setLeads] = useState<Lead[]>([])
   const [staff, setStaff] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,12 +16,12 @@ export function Leads() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    listLeads(inSales ? profile?.id : undefined)
+    listLeads()
       .then(setLeads)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load leads.'))
       .finally(() => setLoading(false))
-    if (!inSales) listStaff().then(setStaff).catch(() => {})
-  }, [inSales, profile?.id])
+    listStaff().then(setStaff).catch(() => {})
+  }, [])
 
   const staffById = useMemo(() => new Map(staff.map((p) => [p.id, p])), [staff])
   const today = todayIso()
@@ -47,7 +43,7 @@ export function Leads() {
       key={value}
       onClick={() => setStatus(value)}
       className={`rounded-full border px-3 py-1.5 text-sm ${
-        status === value ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-400'
+        status === value ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-400'
       }`}
     >
       {label}
@@ -57,10 +53,10 @@ export function Leads() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-white">{inSales ? 'My leads' : 'All leads'}</h1>
+        <h1 className="text-xl font-semibold text-white">Leads</h1>
         <Link
-          to={`${base}/leads/new`}
-          className="rounded-lg bg-purple-500 px-5 py-3 text-sm font-medium text-white hover:bg-purple-400"
+          to="/admin/leads/new"
+          className="rounded-lg bg-brand-500 px-5 py-3 text-sm font-medium text-on-accent hover:bg-brand-400"
         >
           + New lead
         </Link>
@@ -77,9 +73,9 @@ export function Leads() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search business, contact, phone or area"
-          className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-400"
+          className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-400"
         />
-        {!inSales && (
+        {staff.length > 0 && (
           <select
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
@@ -111,7 +107,7 @@ export function Leads() {
             return (
               <Link
                 key={l.id}
-                to={`${base}/leads/${l.id}`}
+                to={`/admin/leads/${l.id}`}
                 className="block rounded-lg border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-600"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -121,7 +117,7 @@ export function Leads() {
                       {[l.contact_name, l.phone, l.area].filter(Boolean).join(' · ') || 'No contact details'}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      {!inSales && `${staffName(staffById.get(l.owner_id ?? ''))} · `}
+                      {staffById.size > 0 && `${staffName(staffById.get(l.owner_id ?? ''))} · `}
                       {l.estimated_value !== null && `${formatRand(l.estimated_value)}/month · `}
                       Updated {new Date(l.updated_at).toLocaleDateString('en-ZA')}
                       {l.follow_up_date && (

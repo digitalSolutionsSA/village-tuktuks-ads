@@ -1,8 +1,98 @@
 @import "tailwindcss";
 
+/* Village Media brand, sampled from public/LOGO.png. "brand" is the logo blue and is the
+   main accent everywhere; the four logo colours are also available for stripes and highlights. */
+@theme {
+  --color-brand-50: #e6f5fd;
+  --color-brand-100: #ccebfb;
+  --color-brand-200: #99d6f6;
+  --color-brand-300: #5cbcef;
+  --color-brand-400: #23a3e6;
+  --color-brand-500: #0486cd;
+  --color-brand-600: #036fab;
+  --color-brand-700: #035a8b;
+  --color-brand-800: #05496f;
+  --color-brand-900: #083b5a;
+  --color-brand-950: #06263b;
+
+  --color-logo-red: #e64018;
+  --color-logo-gold: #dfa90d;
+  --color-logo-green: #2e9737;
+  --color-logo-blue: #0486cd;
+
+  /* Text on solid coloured buttons/badges — stays the same in light and dark mode. */
+  --color-on-accent: #ffffff;
+  --color-on-light: #18181b;
+}
+
 :root {
   color-scheme: dark;
 }
+
+/* Light mode for the staff portal (set by useTheme on the portal and sign-in page; the
+   tuk-tuk player never gets it). The pages are written dark-first, so light mode swaps the
+   grey scale end for end: page and card backgrounds become light, text becomes dark. */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-zinc-950: #f4f4f5;
+  --color-zinc-900: #ffffff;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-400: #52525b;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-200: #27272a;
+  --color-zinc-100: #18181b;
+  --color-zinc-50: #09090b;
+  --color-white: #18181b;
+}
+
+/* Pale text tints are made for dark backgrounds; use deeper shades on light ones. */
+[data-theme="light"] .text-brand-100 { color: var(--color-brand-800); }
+[data-theme="light"] .text-brand-200 { color: var(--color-brand-800); }
+[data-theme="light"] .text-brand-300 { color: var(--color-brand-700); }
+[data-theme="light"] .text-brand-400 { color: var(--color-brand-700); }
+[data-theme="light"] .text-green-100 { color: var(--color-green-800); }
+[data-theme="light"] .text-green-200 { color: var(--color-green-800); }
+[data-theme="light"] .text-green-300 { color: var(--color-green-700); }
+[data-theme="light"] .text-green-400 { color: var(--color-green-700); }
+[data-theme="light"] .text-red-100 { color: var(--color-red-800); }
+[data-theme="light"] .text-red-200 { color: var(--color-red-800); }
+[data-theme="light"] .text-red-300 { color: var(--color-red-700); }
+[data-theme="light"] .text-red-400 { color: var(--color-red-700); }
+[data-theme="light"] .text-amber-100 { color: var(--color-amber-800); }
+[data-theme="light"] .text-amber-200 { color: var(--color-amber-800); }
+[data-theme="light"] .text-amber-300 { color: var(--color-amber-700); }
+[data-theme="light"] .text-amber-400 { color: var(--color-amber-700); }
+[data-theme="light"] .text-sky-100 { color: var(--color-sky-800); }
+[data-theme="light"] .text-sky-200 { color: var(--color-sky-800); }
+[data-theme="light"] .text-sky-300 { color: var(--color-sky-700); }
+[data-theme="light"] .text-sky-400 { color: var(--color-sky-700); }
+[data-theme="light"] .text-pink-100 { color: var(--color-pink-800); }
+[data-theme="light"] .text-pink-200 { color: var(--color-pink-800); }
+[data-theme="light"] .text-pink-300 { color: var(--color-pink-700); }
+[data-theme="light"] .text-pink-400 { color: var(--color-pink-700); }
+[data-theme="light"] .text-indigo-100 { color: var(--color-indigo-800); }
+[data-theme="light"] .text-indigo-200 { color: var(--color-indigo-800); }
+[data-theme="light"] .text-indigo-300 { color: var(--color-indigo-700); }
+[data-theme="light"] .text-indigo-400 { color: var(--color-indigo-700); }
+[data-theme="light"] .text-emerald-100 { color: var(--color-emerald-800); }
+[data-theme="light"] .text-emerald-200 { color: var(--color-emerald-800); }
+[data-theme="light"] .text-emerald-300 { color: var(--color-emerald-700); }
+[data-theme="light"] .text-emerald-400 { color: var(--color-emerald-700); }
+[data-theme="light"] .text-yellow-100 { color: var(--color-yellow-800); }
+[data-theme="light"] .text-yellow-200 { color: var(--color-yellow-800); }
+[data-theme="light"] .text-yellow-300 { color: var(--color-yellow-700); }
+[data-theme="light"] .text-yellow-400 { color: var(--color-yellow-700); }
+[data-theme="light"] .text-blue-100 { color: var(--color-blue-800); }
+[data-theme="light"] .text-blue-200 { color: var(--color-blue-800); }
+[data-theme="light"] .text-blue-300 { color: var(--color-blue-700); }
+[data-theme="light"] .text-blue-400 { color: var(--color-blue-700); }
+[data-theme="light"] .text-orange-100 { color: var(--color-orange-800); }
+[data-theme="light"] .text-orange-200 { color: var(--color-orange-800); }
+[data-theme="light"] .text-orange-300 { color: var(--color-orange-700); }
+[data-theme="light"] .text-orange-400 { color: var(--color-orange-700); }
 
 html,
 body,
@@ -18,43 +108,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The four logo colours side by side, as on the Village Media banners. */
+.brand-stripe {
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    var(--color-logo-red) 0 25%,
+    var(--color-logo-gold) 25% 50%,
+    var(--color-logo-green) 50% 75%,
+    var(--color-logo-blue) 75% 100%
+  );
+}
+
 /* Kiosk player must never show scrollbars or allow text selection/zoom gestures */
 .kiosk {
   overscroll-behavior: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-}
-
-/* Top-bar marquee: two copies of the text back-to-back, scrolled left by
-   exactly half the track width so the loop is seamless. */
-.marquee-track {
-  width: max-content;
-  animation: marquee-scroll linear infinite;
-}
-
-@keyframes marquee-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-/* Left-tab marquee: same seamless two-copies trick, scrolled up instead of left. */
-.marquee-track-vertical {
-  height: max-content;
-  animation: marquee-scroll-vertical linear infinite;
-}
-
-@keyframes marquee-scroll-vertical {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(-50%);
-  }
 }
 
 /* Statistics "live" activity feed: new rows slide/fade in from the top. */

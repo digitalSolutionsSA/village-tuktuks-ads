@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { emailAgreement, getAgreementPdfUrl, listAgreements } from '../../lib/clientsApi'
 import { agreementFileName } from '../../lib/agreementPdf'
-import { useAuth } from '../../context/AuthContext'
+import { isAdminProfile, useAuth } from '../../context/AuthContext'
 import { listStaff, staffName } from '../../lib/staffApi'
 import type { ClientAgreementWithClient, Profile } from '../../types'
 
 export function Clients() {
   const { profile } = useAuth()
-  const inSales = useLocation().pathname.startsWith('/sales')
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = isAdminProfile(profile)
   const [staff, setStaff] = useState<Map<string, Profile>>(new Map())
   const [agreements, setAgreements] = useState<ClientAgreementWithClient[]>([])
   const [loading, setLoading] = useState(true)
@@ -19,17 +18,16 @@ export function Clients() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    if (isAdmin && !inSales) {
+    if (isAdmin) {
       listStaff()
         .then((list) => setStaff(new Map(list.map((p) => [p.id, p]))))
         .catch(() => {})
     }
-    // In the sales portal, admins see their own clients like any rep would.
-    listAgreements(inSales ? profile?.id : undefined)
+    listAgreements()
       .then(setAgreements)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load clients.'))
       .finally(() => setLoading(false))
-  }, [inSales, isAdmin, profile?.id])
+  }, [isAdmin])
 
   const openPdf = async (a: ClientAgreementWithClient, download: boolean) => {
     if (!a.pdf_path) return
@@ -82,14 +80,14 @@ export function Clients() {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-white">Clients</h1>
         <Link
-          to={inSales ? '/sales/signup' : '/admin/clients/new'}
-          className="rounded-lg bg-purple-500 px-5 py-3 text-sm font-medium text-white hover:bg-purple-400"
+          to="/admin/signup"
+          className="rounded-lg bg-brand-500 px-5 py-3 text-sm font-medium text-on-accent hover:bg-brand-400"
         >
           + New client
         </Link>
       </div>
       <p className="mb-6 text-sm text-zinc-400">
-        {isAdmin && !inSales
+        {isAdmin
           ? 'Every signed advertising agreement, from all sales staff.'
           : 'Clients you have signed up.'}
       </p>
@@ -102,7 +100,7 @@ export function Clients() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by company, name, email or phone"
-          className="mb-4 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-purple-400"
+          className="mb-4 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-brand-400"
         />
       )}
 

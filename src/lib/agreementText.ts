@@ -26,8 +26,13 @@ export const ADVERTISING_AREAS = ['Meyerton', 'Vanderbijlpark', 'Heidelberg', 'W
 
 export const DEFAULT_AD_DURATION = '10 seconds, unless otherwise agreed in writing'
 
-/** Fixed by clause 10.1, so it is not editable per client. */
-export const INITIAL_TERM = '12 months from Campaign Start Date'
+/** Every package can be signed for either term. Clause 10 follows the one chosen (see agreementSectionsFor). */
+export const TERM_OPTIONS = [
+  { value: '12 months from Campaign Start Date', label: '12 months' },
+  { value: '1 month from Campaign Start Date', label: '1 month' },
+] as const
+
+export const INITIAL_TERM = TERM_OPTIONS[0].value
 
 export const VAT_OPTIONS = [
   { value: 'inclusive', label: 'Inclusive' },
@@ -190,6 +195,24 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
     ],
   },
 ]
+
+/**
+ * The terms for a given initial term. The 12-month wording is the signed-off text; a 1-month
+ * contract uses the same clauses with "one (1) month" in place of "twelve (12) months" in clause 10.
+ */
+export function agreementSectionsFor(initialTerm: string | null | undefined): AgreementSection[] {
+  if (!initialTerm?.startsWith('1 month')) return AGREEMENT_SECTIONS
+  return AGREEMENT_SECTIONS.map((section) =>
+    section.title.startsWith('10.')
+      ? {
+          ...section,
+          clauses: section.clauses.map((c) =>
+            c.replaceAll('twelve (12) months', 'one (1) month').replaceAll('twelve (12) month', 'one (1) month'),
+          ),
+        }
+      : section,
+  )
+}
 
 export const SIGNATURE_DECLARATION =
   'By signing below, each signatory warrants that he or she is authorised to bind the relevant party and acknowledges that the Campaign Schedule and these terms form the agreement between the parties.'

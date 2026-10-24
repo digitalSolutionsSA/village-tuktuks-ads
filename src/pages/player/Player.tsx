@@ -1,53 +1,86 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { isAdminProfile, useAuth } from '../../context/AuthContext'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { getPlayableUrl, prefetchMedia, pruneCache } from '../../lib/mediaCache'
-import {
-  loadManifest,
-  loadMarqueeManifest,
-  loadSidebarManifest,
-  saveManifest,
-  saveMarqueeManifest,
-  saveSidebarManifest,
-} from '../../lib/playlistManifest'
-import { demoMarqueeFor, demoPlaylistFor, demoSidebarAdsFor } from '../../lib/demoData'
+import { loadManifest, saveManifest } from '../../lib/playlistManifest'
+import { demoPlaylistFor } from '../../lib/demoData'
 import { listTuktuks } from '../../lib/tuktuksApi'
-import { listActiveDriverNames, logDriverSession, verifyDriverPin } from '../../lib/driversApi'
-import { listSidebarAdsForTuktuk } from '../../lib/sidebarAdsApi'
-import { listMarqueeForTuktuk } from '../../lib/marqueeApi'
 import { useWakeLock } from '../../hooks/useWakeLock'
-import { useOnlineStatus } from '../../hooks/useOnlineStatus'
-import { PinPad } from '../../components/PinPad'
-import { DriverPicker } from '../../components/DriverPicker'
-import { SidebarAds } from '../../components/SidebarAds'
-import { MarqueeBar } from '../../components/MarqueeBar'
-import type { DriverName, MarqueeMessage, PlaylistItem, SidebarAd, Tuktuk } from '../../types'
+import type { Ad, PlaylistItem, Tuktuk } from '../../types'
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const HEARTBEAT_INTERVAL_MS = 60 * 1000
 const DEFAULT_IMAGE_SECONDS = 8
 const VIDEO_SAFETY_TIMEOUT_MS = 90 * 1000
 
-/** Fleet-wide house rules, always filling the sidebar's 4 blocks. */
-const HOUSE_RULE_ADS: SidebarAd[] = [
-  { id: 'house-rule-cctv', tuktuk_id: 0, title: "You're on CCTV", media_path: 'Ads/banner 1.png', media_url: '/Ads/banner%201.png', is_active: true, sort_order: -4, created_at: '2026-01-01T00:00:00Z' },
-  { id: 'house-rule-disclaimer', tuktuk_id: 0, title: 'Disclaimer', media_path: 'Ads/banner 2.png', media_url: '/Ads/banner%202.png', is_active: true, sort_order: -3, created_at: '2026-01-01T00:00:00Z' },
-  { id: 'house-rule-no-smoking', tuktuk_id: 0, title: 'No Smoking, Eating or Drinking', media_path: 'Ads/banner 3.png', media_url: '/Ads/banner%203.png', is_active: true, sort_order: -2, created_at: '2026-01-01T00:00:00Z' },
-  { id: 'house-rule-rates', tuktuk_id: 0, title: 'Ride Rates', media_path: 'Ads/banner 4.png', media_url: '/Ads/banner%204.png', is_active: true, sort_order: -1, created_at: '2026-01-01T00:00:00Z' },
-]
+/** A tablet that hasn't been given a tuk-tuk number yet plays every active ad in the fleet. */
+const FLEET = 0
+const DEVICE_TUKTUK_KEY = 'vt.deviceTuktuk'
 
+function loadDeviceTuktuk(): number {
+  try {
+    const n = Number(localStorage.getItem(DEVICE_TUKTUK_KEY))
+    return Number.isInteger(n) && n >= 1 ? n : FLEET
+  } catch {
+    return FLEET
+  }
+}
+
+function saveDeviceTuktuk(tuktukId: number) {
+  try {
+    localStorage.setItem(DEVICE_TUKTUK_KEY, String(tuktukId))
+  } catch {
+    /* storage blocked — the tablet just keeps playing the fleet playlist at / */
+  }
+}
+
+/**
+ * Passenger notices, built into the player so they can't be switched off from the portal.
+ * After every 5 ads the next notice plays (so every 6th slot), taking turns through all four.
+ * With no ads scheduled, the notices play on their own.
+ */
+const NOTICES = [
+  { title: "You're on CCTV", url: '/Ads/banner%201.png' },
+  { title: 'Disclaimer', url: '/Ads/banner%202.png' },
+  { title: 'No smoking, eating or drinking', url: '/Ads/banner%203.png' },
+  { title: 'Ride rates', url: '/Ads/banner%204.png' },
+]
+const NOTICE_EVERY = 6
+const NOTICE_SECONDS = 10
+
+type Slot = { kind: 'ad'; item: PlaylistItem } | { kind: 'notice'; notice: (typeof NOTICES)[number] }
+
+/** What plays in rotation slot `n` (0-based): ads in order, with a notice in every 6th slot. */
+function slotAt(n: number, ads: PlaylistItem[]): Slot {
+  if (!ads.length) return { kind: 'notice', notice: NOTICES[n % NOTICES.length] }
+  const noticesBefore = Math.floor((n + 1) / NOTICE_EVERY)
+  if ((n + 1) % NOTICE_EVERY === 0) return { kind: 'notice', notice: NOTICES[(noticesBefore - 1) % NOTICES.length] }
+  return { kind: 'ad', item: ads[(n - noticesBefore) % ads.length] }
+}
+
+/**
+ * `/`            — plays straight away: this tablet's tuk-tuk, or the whole fleet's ads if none is set yet.
+ * `/player`      — pick this tablet's tuk-tuk number (remembered, so `/` plays it from then on).
+ * `/player/7`    — plays tuk-tuk 7 and remembers it for this tablet.
+ * `?preview`     — signed-in staff watching a tuk-tuk's screen; doesn't report the tablet as online.
+ */
 export function Player() {
   const { id } = useParams()
-  const tuktukId = Number(id)
-  const valid = id && Number.isInteger(tuktukId) && tuktukId >= 1
+  const { pathname } = useLocation()
   const [params] = useSearchParams()
   const { profile } = useAuth()
-  // ?preview only takes effect for a signed-in admin — anyone else gets the normal driver flow.
-  const preview = params.has('preview') && profile?.role === 'admin'
+  const preview = params.has('preview') && isAdminProfile(profile)
+  const fromUrl = Number(id)
+  const urlValid = Boolean(id) && Number.isInteger(fromUrl) && fromUrl >= 1
 
-  if (!valid) return <PlayerSetup preview={preview} />
-  return <PlayerScreen tuktukId={tuktukId} preview={preview} />
+  useEffect(() => {
+    if (urlValid && !preview) saveDeviceTuktuk(fromUrl)
+  }, [urlValid, fromUrl, preview])
+
+  if (urlValid) return <PlayerScreen key={fromUrl} tuktukId={fromUrl} preview={preview} />
+  if (pathname === '/') return <PlayerScreen tuktukId={loadDeviceTuktuk()} preview={false} />
+  return <PlayerSetup preview={preview} />
 }
 
 function PlayerSetup({ preview }: { preview: boolean }) {
@@ -67,7 +100,7 @@ function PlayerSetup({ preview }: { preview: boolean }) {
       <p className="max-w-md text-sm text-zinc-400">
         {preview
           ? 'Admin preview — shows exactly what that tuk-tuk plays, no driver sign-in needed.'
-          : "Pick the number for this tuk-tuk, then set the resulting page as this browser's home page / start URL so it always reloads to the same tuk-tuk."}
+          : 'Pick the number for this tuk-tuk. The tablet remembers it, so the home page always plays this tuk-tuk’s ads from then on.'}
       </p>
       {tuktuks === null ? (
         <p className="text-sm text-zinc-500">Loading fleet…</p>
@@ -77,7 +110,7 @@ function PlayerSetup({ preview }: { preview: boolean }) {
             <Link
               key={t.id}
               to={`/player/${t.id}${preview ? '?preview' : ''}`}
-              className={`rounded-xl border px-4 py-6 text-lg font-semibold hover:border-purple-400 ${
+              className={`rounded-xl border px-4 py-6 text-lg font-semibold hover:border-brand-400 ${
                 t.active
                   ? 'border-zinc-700 bg-zinc-900 text-white'
                   : 'border-zinc-800 bg-zinc-900/40 text-zinc-500'
@@ -108,7 +141,25 @@ async function fetchTuktukInfo(tuktukId: number): Promise<TuktukInfo | null> {
   return { active: data.active, label: data.label, groupId: data.group_id }
 }
 
+const inDateRange = (ad: Pick<Ad, 'start_date' | 'end_date'>, today: string) =>
+  !(ad.start_date && ad.start_date > today) && !(ad.end_date && ad.end_date < today)
+
+/** Every active ad in the fleet, for a tablet with no tuk-tuk number yet. */
+async function fetchFleetPlaylist(): Promise<PlaylistItem[]> {
+  const today = new Date().toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from('creatives')
+    .select('*')
+    .eq('is_active', true)
+    .order('created_at')
+  if (error) throw error
+  return ((data as Ad[]) ?? [])
+    .filter((ad) => inDateRange(ad, today))
+    .map((ad, i) => ({ ...ad, assignment_id: `fleet-${ad.id}`, sort_order: i }))
+}
+
 async function fetchPlaylist(tuktukId: number, groupId: string | null): Promise<PlaylistItem[]> {
+  if (tuktukId === FLEET) return fetchFleetPlaylist()
   const today = new Date().toISOString().slice(0, 10)
 
   const directPromise = supabase
@@ -140,49 +191,32 @@ async function fetchPlaylist(tuktukId: number, groupId: string | null): Promise<
         assignment_id: row.id,
         sort_order: row.sort_order,
       }
-      if (item.start_date && item.start_date > today) continue
-      if (item.end_date && item.end_date < today) continue
+      if (!inDateRange(item, today)) continue
       if (!seen.has(item.id)) seen.set(item.id, item)
     }
   }
   return Array.from(seen.values()).sort((a, b) => a.sort_order - b.sort_order)
 }
 
-type Mode = 'welcome' | 'cycling'
-
 function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolean }) {
   const [items, setItems] = useState<PlaylistItem[]>(() =>
     isSupabaseConfigured ? loadManifest(tuktukId) : demoPlaylistFor(tuktukId),
   )
-  const [sidebarAds, setSidebarAds] = useState<SidebarAd[]>(() =>
-    isSupabaseConfigured ? loadSidebarManifest(tuktukId) : demoSidebarAdsFor(tuktukId),
-  )
-  const [marqueeMessages, setMarqueeMessages] = useState<MarqueeMessage[]>(() =>
-    isSupabaseConfigured ? loadMarqueeManifest(tuktukId) : demoMarqueeFor(tuktukId),
-  )
   const [resolved, setResolved] = useState<Record<string, string>>({})
-  const [index, setIndex] = useState(0)
-  const [mode, setMode] = useState<Mode>('welcome')
-  const [driverListVisible, setDriverListVisible] = useState(false)
-  const [availableDrivers, setAvailableDrivers] = useState<DriverName[] | null>(null)
-  const [pendingDriver, setPendingDriver] = useState<DriverName | null>(null)
-  const [currentDriver, setCurrentDriver] = useState<DriverName | null>(null)
-  const [pinContext, setPinContext] = useState<'start' | 'exit' | null>(null)
+  const [noticeUrls, setNoticeUrls] = useState<Record<string, string>>({})
+  // Counts every slot played; slotAt() turns it into an ad or a notice.
+  const [slot, setSlot] = useState(0)
   const [tuktukActive, setTuktukActive] = useState(true)
-  const [tuktukLabel, setTuktukLabel] = useState(`Tuk-Tuk #${tuktukId}`)
-  const online = useOnlineStatus()
-  const { active: wakeLockActive } = useWakeLock()
+  const isFleet = tuktukId === FLEET
+  useWakeLock() // keep the tablet's screen on
   const advanceTimerRef = useRef<number | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const fetchAndStore = useCallback(async () => {
     try {
-      const info = await fetchTuktukInfo(tuktukId)
+      const info = isFleet ? null : await fetchTuktukInfo(tuktukId)
       const gid = info?.groupId ?? null
-      if (info) {
-        setTuktukActive(info.active)
-        setTuktukLabel(info.label)
-      }
+      if (info) setTuktukActive(info.active)
       const fresh = await fetchPlaylist(tuktukId, gid)
       setItems(fresh)
       saveManifest(tuktukId, fresh)
@@ -191,31 +225,12 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
       console.warn('[Player] refresh failed, staying on cached playlist', err)
     }
 
-    try {
-      const freshSidebar = await listSidebarAdsForTuktuk(tuktukId)
-      setSidebarAds(freshSidebar)
-      saveSidebarManifest(tuktukId, freshSidebar)
-      prefetchMedia(freshSidebar.map((a) => a.media_url))
-    } catch (err) {
-      console.warn('[Player] sidebar ads refresh failed, staying on cached set', err)
-    }
-
-    try {
-      const freshMarquee = await listMarqueeForTuktuk(tuktukId)
-      setMarqueeMessages(freshMarquee)
-      saveMarqueeManifest(tuktukId, freshMarquee)
-      prefetchMedia(freshMarquee.filter((m) => m.media_url).map((m) => m.media_url as string))
-    } catch (err) {
-      console.warn('[Player] marquee refresh failed, staying on cached set', err)
-    }
-  }, [tuktukId])
+  }, [tuktukId, isFleet])
 
   // Initial load + periodic refresh + realtime updates.
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setItems(demoPlaylistFor(tuktukId))
-      setSidebarAds(demoSidebarAdsFor(tuktukId))
-      setMarqueeMessages(demoMarqueeFor(tuktukId))
       return
     }
     fetchAndStore()
@@ -230,31 +245,20 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ad_group_assignments' }, fetchAndStore)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'creatives' }, fetchAndStore)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tuktuk_sidebar_ads',
-          filter: `tuktuk_id=eq.${tuktukId}`,
-        },
-        fetchAndStore,
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'marquee_messages' }, fetchAndStore)
       .subscribe()
 
     return () => {
       window.clearInterval(interval)
       supabase.removeChannel(channel)
     }
-  }, [tuktukId, fetchAndStore])
+  }, [tuktukId, isFleet, fetchAndStore])
 
   // Heartbeat so the admin dashboard can show this tablet as online. Goes
   // through a narrow RPC — the anon key can never rewrite the tuk-tuk's
   // label/active/group directly.
   useEffect(() => {
     // An admin previewing from their own browser mustn't make the tablet look online.
-    if (!isSupabaseConfigured || preview) return
+    if (!isSupabaseConfigured || preview || isFleet) return
     const beat = () => {
       supabase
         .rpc('report_heartbeat', { tuktuk_id_param: tuktukId })
@@ -265,12 +269,7 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
     beat()
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS)
     return () => window.clearInterval(interval)
-  }, [tuktukId, preview])
-
-  // Admin preview skips the driver picker + PIN and goes straight to the ad cycle.
-  useEffect(() => {
-    if (preview) setMode('cycling')
-  }, [preview])
+  }, [tuktukId, preview, isFleet])
 
   // Resolve each ad's media into a locally cached, offline-safe URL.
   useEffect(() => {
@@ -290,7 +289,8 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
       const map: Record<string, string> = {}
       for (const [remote, local] of entries) if (local) map[remote] = local
       setResolved(map)
-      pruneCache(items.map((i) => i.media_url))
+      // Keep the notices cached too — they play even with no signal.
+      pruneCache([...items.map((i) => i.media_url), ...NOTICES.map((n) => new URL(n.url, location.origin).href)])
     }
     if (items.length) resolveAll()
     return () => {
@@ -298,24 +298,31 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
     }
   }, [items])
 
-  const playable = useMemo(() => items.filter((i) => resolved[i.media_url]), [items, resolved])
-
+  // Notices are cached like ads so they keep playing offline.
   useEffect(() => {
-    setIndex((i) => (playable.length ? i % playable.length : 0))
-  }, [playable.length])
+    let cancelled = false
+    Promise.all(NOTICES.map(async (n) => [n.url, (await getPlayableUrl(new URL(n.url, location.origin).href)) ?? n.url] as const))
+      .then((entries) => !cancelled && setNoticeUrls(Object.fromEntries(entries)))
+      .catch(() => !cancelled && setNoticeUrls(Object.fromEntries(NOTICES.map((n) => [n.url, n.url]))))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const current = playable[index]
+  const playable = useMemo(() => items.filter((i) => resolved[i.media_url]), [items, resolved])
+  const current = slotAt(slot, playable)
+  const currentSrc = current.kind === 'ad' ? resolved[current.item.media_url] : (noticeUrls[current.notice.url] ?? current.notice.url)
 
-  const advance = useCallback(() => {
-    setIndex((i) => (playable.length ? (i + 1) % playable.length : 0))
-  }, [playable.length])
+  const advance = useCallback(() => setSlot((n) => n + 1), [])
 
   useEffect(() => {
     if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current)
-    if (mode !== 'cycling' || !current) return
+    if (!tuktukActive) return
 
-    if (current.media_type === 'image') {
-      const seconds = current.duration_seconds || DEFAULT_IMAGE_SECONDS
+    if (current.kind === 'notice') {
+      advanceTimerRef.current = window.setTimeout(advance, NOTICE_SECONDS * 1000)
+    } else if (current.item.media_type === 'image') {
+      const seconds = current.item.duration_seconds || DEFAULT_IMAGE_SECONDS
       advanceTimerRef.current = window.setTimeout(advance, seconds * 1000)
     } else {
       // Safety net in case a video's 'ended' event never fires.
@@ -324,183 +331,70 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
     return () => {
       if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current)
     }
-  }, [current, advance, mode])
+    // `slot` re-arms the timer even when the same ad plays twice in a row.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot, playable.length, tuktukActive, advance])
 
-  const openDriverPicker = () => {
-    setDriverListVisible(true)
-    listActiveDriverNames(tuktukId)
-      .then(setAvailableDrivers)
-      .catch(() => setAvailableDrivers([]))
-  }
-
-  const selectDriver = (driver: DriverName) => {
-    setPendingDriver(driver)
-    setDriverListVisible(false)
-    setPinContext('start')
-  }
-
-  const startCycle = async () => {
-    if (!pendingDriver) return
-    await logDriverSession(pendingDriver.id, tuktukId, 'sign_in')
-    setCurrentDriver(pendingDriver)
-    setPendingDriver(null)
-    try {
-      await rootRef.current?.requestFullscreen()
-    } catch {
-      /* fullscreen may be unavailable inside some kiosk browsers — harmless */
-    }
-    setMode('cycling')
-    setPinContext(null)
-  }
-
-  const cancelStart = () => {
-    setPinContext(null)
-    setPendingDriver(null)
-    setDriverListVisible(false)
-  }
-
-  const stopCycle = async () => {
-    if (currentDriver) await logDriverSession(currentDriver.id, tuktukId, 'sign_out')
-    document.exitFullscreen?.().catch(() => {})
-    setCurrentDriver(null)
-    setMode('welcome')
-    setPinContext(null)
+  // Browsers only allow full screen after a tap, so the first tap on the tablet makes it full screen.
+  const enterFullscreen = () => {
+    if (preview || document.fullscreenElement) return
+    rootRef.current?.requestFullscreen?.().catch(() => {
+      /* unavailable inside some kiosk browsers — harmless */
+    })
   }
 
   return (
-    <div
-      ref={rootRef}
-      className="kiosk grid h-screen w-screen grid-cols-[13rem_1fr] grid-rows-[9rem_1fr] overflow-hidden bg-black sm:grid-cols-[17rem_1fr] sm:grid-rows-[11rem_1fr] lg:grid-cols-[21rem_1fr] lg:grid-rows-[13rem_1fr]"
-    >
-      <div className="flex items-center justify-center bg-zinc-950 p-1">
-        <img src="/LOGO.png" alt="Village Tuk-Tuks" className="max-h-full max-w-full object-contain" />
-      </div>
-
-      <div className="min-w-0">
-        <SidebarAds ads={[...HOUSE_RULE_ADS, ...sidebarAds]} orientation="horizontal" />
-      </div>
-
-      <div className="min-h-0">
-        <MarqueeBar messages={marqueeMessages} orientation="vertical" />
-      </div>
-
-      <div
-        className="relative min-h-0 min-w-0"
-        onClick={() => {
-          if (mode === 'cycling' && pinContext === null && !preview) setPinContext('exit')
-        }}
-      >
-        {mode === 'welcome' && pinContext !== 'start' ? (
-          driverListVisible ? (
-            <DriverPicker drivers={availableDrivers} onSelect={selectDriver} />
-          ) : (
-            <WelcomeScreen label={tuktukLabel} tuktukActive={tuktukActive} onPlay={openDriverPicker} />
-          )
-        ) : mode === 'welcome' ? null : !tuktukActive ? (
-          <OutOfServiceScreen tuktukId={tuktukId} />
-        ) : current ? (
-          current.media_type === 'video' ? (
-            <video
-              key={current.assignment_id}
-              src={resolved[current.media_url]}
-              className="h-full w-full object-contain"
-              autoPlay
-              muted
-              playsInline
-              onEnded={advance}
-              onError={advance}
-            />
-          ) : (
-            <img
-              key={current.assignment_id}
-              src={resolved[current.media_url]}
-              className="h-full w-full object-contain"
-              alt=""
-              onError={advance}
-            />
-          )
-        ) : (
-          <IdleScreen tuktukId={tuktukId} />
-        )}
-
-        {pinContext === 'start' && pendingDriver && (
-          <PinPad
-            title={`Enter PIN for ${pendingDriver.username}`}
-            onVerify={(candidate) => verifyDriverPin(pendingDriver.id, tuktukId, candidate)}
-            onSuccess={startCycle}
-            onIdleTimeout={cancelStart}
-          />
-        )}
-        {pinContext === 'exit' && currentDriver && (
-          <PinPad
-            title="Enter PIN to exit"
-            onVerify={(candidate) => verifyDriverPin(currentDriver.id, tuktukId, candidate)}
-            onSuccess={stopCycle}
-            onIdleTimeout={() => setPinContext(null)}
-          />
-        )}
-
-        {preview && (
-          <div className="absolute right-3 top-3 flex items-center gap-2 text-xs">
-            <span className="rounded bg-purple-500/30 px-2 py-1 text-purple-200">Admin preview</span>
-            <Link
-              to="/admin/tuktuks"
-              className="rounded bg-black/60 px-2 py-1 text-white/80 hover:text-white"
-            >
-              Exit
-            </Link>
-          </div>
-        )}
-
-        <div className="absolute left-3 top-3 flex items-center gap-2 text-xs text-white/40">
-          {isSupabaseConfigured ? (
-            <>
-              <span className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-              {online ? 'online' : 'offline (cached playlist)'}
-              {wakeLockActive && <span className="ml-1">· awake</span>}
-            </>
-          ) : (
-            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-300">
-              DEMO MODE · tuk-tuk #{tuktukId}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function WelcomeScreen({
-  label,
-  tuktukActive,
-  onPlay,
-}: {
-  label: string
-  tuktukActive: boolean
-  onPlay: () => void
-}) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-6 text-center">
-      <p className="text-2xl font-semibold text-white">{label}</p>
-      {tuktukActive ? (
-        <button
-          onClick={onPlay}
-          className="rounded-2xl bg-purple-500 px-10 py-5 text-xl font-semibold text-white hover:bg-purple-400"
-        >
-          ▶ Play Ads
-        </button>
+    <div ref={rootRef} className="kiosk relative h-screen w-screen overflow-hidden bg-black" onClick={enterFullscreen}>
+      {!tuktukActive ? (
+        <OutOfServiceScreen tuktukId={tuktukId} />
+      ) : current.kind === 'ad' && current.item.media_type === 'video' ? (
+        <video
+          key={slot}
+          src={currentSrc}
+          className="absolute inset-0 h-full w-full object-contain"
+          autoPlay
+          muted
+          playsInline
+          onEnded={advance}
+          onError={advance}
+        />
       ) : (
-        <p className="text-zinc-500">This tuk-tuk is currently out of service.</p>
+        <img
+          key={slot}
+          src={currentSrc}
+          className="absolute inset-0 h-full w-full object-contain"
+          alt={current.kind === 'notice' ? current.notice.title : ''}
+          onError={advance}
+        />
       )}
-    </div>
-  )
-}
 
-function IdleScreen({ tuktukId }: { tuktukId: number }) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center text-zinc-500">
-      <p className="text-lg">No ads scheduled for Tuk-Tuk #{tuktukId}</p>
-      <p className="text-sm">Checking for updates automatically…</p>
+      {/* The only thing on screen besides the ad — and the way into the staff portal. */}
+      <Link
+        to="/admin"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+        }}
+        className="absolute left-3 top-3 z-10 block rounded-2xl bg-black/40 p-1.5 backdrop-blur-sm"
+        title="Village Media portal"
+      >
+        <img src="/LOGO.png" alt="Village Media" className="h-14 w-auto sm:h-20" />
+      </Link>
+
+      {preview && (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2 text-xs">
+          <span className="rounded bg-brand-500/30 px-2 py-1 text-brand-200">Admin preview</span>
+          <Link to="/admin" className="rounded bg-black/60 px-2 py-1 text-white/80 hover:text-white">
+            Exit
+          </Link>
+        </div>
+      )}
+
+      {!isSupabaseConfigured && (
+        <span className="absolute bottom-3 right-3 z-10 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-300">
+          DEMO MODE · {isFleet ? 'all tuk-tuks' : `tuk-tuk #${tuktukId}`}
+        </span>
+      )}
     </div>
   )
 }

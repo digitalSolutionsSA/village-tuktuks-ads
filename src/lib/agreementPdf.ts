@@ -2,13 +2,13 @@ import type { jsPDF as JsPdf } from 'jspdf'
 import {
   ADVERTISING_AREAS,
   AGREEMENT_IS_DRAFT,
-  AGREEMENT_SECTIONS,
   AGREEMENT_VERSION,
   DEFAULT_AD_DURATION,
   INITIAL_TERM,
   SIGNATURE_DECLARATION,
   VAT_OPTIONS,
   VILLAGE_MEDIA,
+  agreementSectionsFor,
 } from './agreementText'
 import type { VatOption } from '../types'
 
@@ -225,7 +225,7 @@ export async function buildAgreementPdf(input: AgreementPdfInput): Promise<Blob>
   row('Selected Package / Notes', schedule.package_notes)
 
   // ---- 3–19. Terms ----
-  for (const section of AGREEMENT_SECTIONS) {
+  for (const section of agreementSectionsFor(schedule.initial_term || INITIAL_TERM)) {
     heading(section.title)
     for (const clause of section.clauses) paragraph(clause)
   }

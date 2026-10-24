@@ -12,6 +12,33 @@ export interface Profile {
   last_seen_at: string | null
   /** Contracts this rep aims to sign per month. */
   monthly_target: number | null
+  /** Management (set in schema.sql §15): manages staff, sees sales performance and the activity log. */
+  super_admin: boolean
+  /** Commission structure this sales person earns on (main admins assign it). */
+  commission_structure_id: string | null
+  created_at: string
+}
+
+export type StaffActivityAction =
+  | 'sign_in'
+  | 'sign_out'
+  | 'client_added'
+  | 'contract_signed'
+  | 'lead_added'
+  | 'lead_status'
+  | 'ad_uploaded'
+  | 'ad_deleted'
+  | 'ad_assigned'
+
+/** One line in the staff activity log (written by database triggers). */
+export interface StaffActivity {
+  id: string
+  user_id: string | null
+  actor_name: string | null
+  action: StaffActivityAction
+  summary: string
+  entity_type: 'client' | 'lead' | 'ad' | null
+  entity_id: string | null
   created_at: string
 }
 
@@ -92,6 +119,8 @@ export interface Ad {
   is_active: boolean
   start_date: string | null
   end_date: string | null
+  /** The customer this ad was loaded for. */
+  client_id: string | null
   created_at: string
 }
 
@@ -138,59 +167,6 @@ export interface PlaylistItem extends Ad {
   sort_order: number
 }
 
-export interface Driver {
-  id: string
-  username: string
-  active: boolean
-  /** The one tuk-tuk this driver's PIN works on. null = works on any tuk-tuk. */
-  tuktuk_id: number | null
-  created_at: string
-}
-
-/** Public-safe subset (no PIN) shown to the tablet's driver picker. */
-export interface DriverName {
-  id: string
-  username: string
-  tuktuk_id: number | null
-}
-
-export type DriverSessionAction = 'sign_in' | 'sign_out'
-
-export interface DriverSession {
-  id: string
-  driver_id: string | null
-  driver_username: string
-  tuktuk_id: number | null
-  tuktuk_label: string
-  action: DriverSessionAction
-  created_at: string
-}
-
-/** A tuk-tuk's own logo/services ad, cycled in the player's left sidebar. */
-export interface SidebarAd {
-  id: string
-  tuktuk_id: number
-  title: string
-  media_path: string
-  media_url: string
-  is_active: boolean
-  sort_order: number
-  created_at: string
-}
-
-/** A scrolling top-bar ad. tuktuk_id null = shows fleet-wide. */
-export interface MarqueeMessage {
-  id: string
-  tuktuk_id: number | null
-  advertiser_name: string | null
-  message: string
-  media_path: string | null
-  media_url: string | null
-  is_active: boolean
-  sort_order: number
-  created_at: string
-}
-
 export const TUKTUK_COUNT = 16
 
 export interface Client {
@@ -230,7 +206,47 @@ export interface ClientAgreement {
   emailed_at: string | null
   /** The lead this contract was signed from, if any. */
   lead_id: string | null
+  /** Commission terms copied from the signer's structure when it was signed. */
+  commission_structure_id: string | null
+  commission_kind: CommissionKind | null
+  commission_rate: number | null
+  commission_months: number | null
+  /** Set by a main admin when the customer stops advertising. */
+  ended_on: string | null
   created_by: string | null
+  created_at: string
+}
+
+export type CommissionKind = 'percent' | 'flat'
+
+/** How a sales person is paid: a % of the monthly fee, or a flat amount, for the first `months` months of each contract. */
+export interface CommissionStructure {
+  id: string
+  name: string
+  kind: CommissionKind
+  rate: number
+  months: number
+  notes: string | null
+  active: boolean
+  created_at: string
+}
+
+export interface Payout {
+  id: string
+  user_id: string | null
+  amount: number
+  paid_on: string
+  note: string | null
+  created_at: string
+}
+
+export interface Cost {
+  id: string
+  /** First day of the month the cost belongs to. */
+  month: string
+  category: string
+  description: string | null
+  amount: number
   created_at: string
 }
 

@@ -22,7 +22,7 @@ export function StatCard({
 export const LEAD_STATUS_STYLES: Record<string, string> = {
   new: 'bg-sky-500/15 text-sky-300',
   contacted: 'bg-indigo-500/15 text-indigo-300',
-  meeting: 'bg-purple-500/15 text-purple-300',
+  meeting: 'bg-brand-500/15 text-brand-300',
   proposal: 'bg-amber-500/15 text-amber-300',
   won: 'bg-green-500/15 text-green-300',
   lost: 'bg-zinc-700/50 text-zinc-400',

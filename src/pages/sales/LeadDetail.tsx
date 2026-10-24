@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { LEAD_STATUS_STYLES } from '../../components/StatCard'
-import { useAuth } from '../../context/AuthContext'
+import { isSuperAdmin, useAuth } from '../../context/AuthContext'
 import { ADVERTISING_AREAS } from '../../lib/agreementText'
 import {
   addLeadEvent,
@@ -26,7 +26,7 @@ import {
 } from '../../types'
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-3 text-base text-white outline-none focus:border-purple-400'
+  'w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-3 text-base text-white outline-none focus:border-brand-400'
 
 const EVENT_ICONS: Record<LeadEventKind, string> = { note: '📝', call: '📞', visit: '🤝', status: '↻', signed: '✅' }
 
@@ -35,22 +35,22 @@ function Field({ label, required, children }: { label: string; required?: boolea
     <label className="block">
       <span className="mb-1 block text-sm text-zinc-300">
         {label}
-        {required && <span className="text-purple-400"> *</span>}
+        {required && <span className="text-brand-400"> *</span>}
       </span>
       {children}
     </label>
   )
 }
 
-/** Create (/leads/new) or view + work a lead (/leads/:id), in either portal. */
+/** Create (/leads/new) or view + work a lead (/leads/:id). */
 export function LeadDetail() {
   const { id } = useParams()
   const isNew = !id || id === 'new'
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const inSales = useLocation().pathname.startsWith('/sales')
-  const base = inSales ? '/sales' : '/admin'
-  const isAdmin = profile?.role === 'admin'
+  const base = '/admin'
+  // Sales people add and work leads; only main admins reassign or delete them.
+  const isAdmin = isSuperAdmin(profile)
 
   const [lead, setLead] = useState<Lead | null>(null)
   const [form, setForm] = useState<LeadInput>(emptyLeadInput)
@@ -164,14 +164,14 @@ export function LeadDetail() {
         {lead && !signed && (
           <div className="flex flex-wrap gap-2">
           <Link
-            to={`/sales/projection?lead=${lead.id}`}
+            to={`${base}?lead=${lead.id}#projection`}
             className="rounded-lg border border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
           >
             📈 Show projection
           </Link>
           <Link
             to={`${base}/signup?lead=${lead.id}`}
-            className="rounded-lg bg-green-600 px-5 py-3 text-sm font-medium text-white hover:bg-green-500"
+            className="rounded-lg bg-green-600 px-5 py-3 text-sm font-medium text-on-accent hover:bg-green-500"
           >
             ✎ Sign contract now
           </Link>
@@ -182,7 +182,7 @@ export function LeadDetail() {
         )}
       </div>
 
-      {isAdmin && !inSales && lead && staff.length > 0 && (
+      {isAdmin && lead && staff.length > 0 && (
         <div className="mb-4 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm">
           <span className="text-zinc-400">Sales rep</span>
           <select
@@ -237,7 +237,7 @@ export function LeadDetail() {
                   type="button"
                   onClick={() => set('status', s)}
                   className={`rounded-lg border px-3 py-2.5 text-sm ${
-                    form.status === s ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-300'
+                    form.status === s ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-300'
                   }`}
                 >
                   {LEAD_STATUS_LABELS[s]}
@@ -266,7 +266,7 @@ export function LeadDetail() {
       {notice && <p className="mt-4 text-sm text-green-400">{notice}</p>}
 
       <div className="mt-5 flex flex-wrap justify-between gap-3">
-        {lead ? (
+        {lead && isAdmin ? (
           <button onClick={remove} className="rounded-lg px-4 py-3 text-sm text-red-400 hover:bg-red-950/40">
             Delete lead
           </button>
@@ -276,7 +276,7 @@ export function LeadDetail() {
         <button
           onClick={save}
           disabled={saving || !form.business_name.trim()}
-          className="rounded-lg bg-purple-500 px-6 py-3 font-medium text-white hover:bg-purple-400 disabled:opacity-50"
+          className="rounded-lg bg-brand-500 px-6 py-3 font-medium text-on-accent hover:bg-brand-400 disabled:opacity-50"
         >
           {saving ? 'Saving…' : isNew ? 'Add lead' : 'Save changes'}
         </button>
@@ -292,7 +292,7 @@ export function LeadDetail() {
                   key={k}
                   onClick={() => setActivity((a) => ({ ...a, kind: k }))}
                   className={`rounded-lg border px-3 py-2 text-sm ${
-                    activity.kind === k ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-400'
+                    activity.kind === k ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-400'
                   }`}
                 >
                   {EVENT_ICONS[k]} {k === 'call' ? 'Call' : k === 'visit' ? 'Visit' : 'Note'}
@@ -305,7 +305,7 @@ export function LeadDetail() {
                 onChange={(e) => setActivity((a) => ({ ...a, body: e.target.value }))}
                 onKeyDown={(e) => e.key === 'Enter' && logActivity()}
                 placeholder="What happened? e.g. Met the owner, wants a quote for Meyerton"
-                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-400"
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-400"
               />
               <button
                 onClick={logActivity}

@@ -124,7 +124,7 @@ export function Statistics() {
           <select
             value={customerId}
             onChange={(e) => setCustomerId(e.target.value)}
-            className="w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-purple-400"
+            className="w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-brand-400"
           >
             {DEMO_CUSTOMERS.map((c) => (
               <option key={c.id} value={c.id}>
@@ -161,7 +161,7 @@ export function Statistics() {
                     {day.total.toLocaleString()}
                   </span>
                   <div
-                    className="w-full rounded-t bg-purple-500 transition-[height] duration-700 ease-out"
+                    className="w-full rounded-t bg-brand-500 transition-[height] duration-700 ease-out"
                     style={{ height: `${Math.max(4, (day.total / maxDay) * 100)}%` }}
                   />
                   <span className="text-xs text-zinc-500">{day.label}</span>
@@ -183,7 +183,7 @@ export function Statistics() {
                   <span className="w-24 shrink-0 text-xs text-zinc-400">{t.label}</span>
                   <div className="h-3 flex-1 overflow-hidden rounded-full bg-zinc-800">
                     <div
-                      className="h-full rounded-full bg-purple-500 transition-[width] duration-700 ease-out"
+                      className="h-full rounded-full bg-brand-500 transition-[width] duration-700 ease-out"
                       style={{ width: `${Math.max(2, (t.total / maxTuktuk) * 100)}%` }}
                     />
                   </div>

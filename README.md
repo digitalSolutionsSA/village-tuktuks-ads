@@ -4,18 +4,26 @@ A digital-signage web app for the tuk-tuk fleet, plus an admin portal for
 uploading ads and putting them live on specific tuk-tuks or whole groups of
 them.
 
-- **Landing** (`/`) — lets someone choose "Sign in as Tuk-Tuk Driver" or
-  "Admin sign in."
-- **Player** (`/player/1`, `/player/2`, …) — the tablet-facing screen for one
-  tuk-tuk. Shows a welcome screen until a driver signs in with their PIN,
-  then cycles ads fullscreen. Tapping the screen during playback brings up a
-  PIN prompt to exit; it vanishes on its own after 2 seconds of no input.
+- **Ads** (`/`) — the tablet screen. Starts playing ads immediately, no
+  sign-in. Plays this tablet's tuk-tuk (set once by opening `/player` and
+  tapping its number, or `/player/7` — the tablet remembers it). A tablet
+  with no number yet plays every active ad in the fleet. Ads fill the whole
+  screen; the only other thing on it is the Village Media logo (top-left),
+  which opens the staff portal. After every 5 ads one of the four passenger
+  notices plays for 10 seconds (CCTV → Disclaimer → No smoking → Ride rates,
+  in turn) — they're built into the player (`public/Ads/banner 1–4.png`) and
+  can't be switched off. With no ads scheduled, the notices play on their own.
+  The first tap makes it full screen.
   Works offline: once media has loaded, it keeps cycling from a local cache
   even with no signal.
-- **Admin portal** (`/admin`) — admin-only (no public sign-up). Upload ads,
-  then separately choose which tuk-tuks or groups each one goes live on,
-  manage the tuk-tuk fleet (add/remove/rename/group/deactivate), manage
-  drivers, and see recent driver sign-in activity.
+- **Staff portal** (`/admin`, sign in at `/admin/login`) — one portal for
+  sales reps and management (no public sign-up). Its home page is the
+  customer-facing **Pitch**, so reps can open it and stay on it at a
+  customer. Also: projections, leads, contract sign-up, clients, ads,
+  tuk-tuks, groups, marquee, statistics and packages.
+  Styled in the logo's colours (brand blue, with the red-gold-green-blue
+  stripe); dark by default, with a ☀️ Light / 🌙 Dark switch in the header
+  that each device remembers. The tuk-tuk ad screen always stays dark.
 
 Stack: Vite + React + TypeScript + Tailwind CSS v4 + Supabase (Postgres,
 Auth, Storage, Realtime).
@@ -58,21 +66,29 @@ into `/admin`. To create yourself (or a second admin, max 1–2 recommended):
 Optional hardening: Authentication → Providers → Email → turn off "Allow new
 users to sign up," since the app never links to a sign-up form anyway.
 
-### Management vs. sales team
+### Who can do what
 
-- **Management portal** (`/admin`, sign in at `/admin/login`) — `admin` role
-  only. Everything: ads, tuk-tuks, groups, drivers, marquee, statistics, plus
-  **Sales team** (create rep logins, see who's online, their leads, contracts,
-  revenue and online hours), **Leads** (everyone's, reassignable),
-  **Clients** and **Packages**.
-- **Sales portal** (`/sales`, sign in at `/sales/login`) — `sales` role (admins
-  can open it too). Touch-first for tablets: home with monthly numbers and
-  follow-ups, a customer-facing **Pitch** screen (live fleet numbers, ads
-  running now, packages, plain-language terms, full-screen mode), **Leads**
-  with an activity timeline, **Sign client** (contract signed on the tablet,
-  pre-filled from a lead or package) and **My clients**.
+- **Sales people** (sign in at `/admin/login` with the username a main admin
+  gives them): the **Pitch** (portal home, incl. the live projection),
+  **Leads** (add and work them — no deleting), **Sign client** (sign the
+  contract on the tablet and email it), **Clients** (no deleting), **Ads**
+  (load an ad for a customer and choose which areas it plays in), and
+  **Statistics**. Plus the preview player and the dark/light switch.
+- **Main admins** (`profiles.super_admin`: info@digitalsolutionssa.co.za,
+  jaco@agilegas.co.za, refiloe@agilegas.co.za) — everything above, plus:
+  **Sales team** (add / edit / delete sales people with username and
+  password), **Commissions** (structures: % of the monthly fee or a flat
+  amount, for N months; who earns on which), **Finance** (monthly earnings vs
+  costs vs commission, payouts owed per sales person, recording payouts and
+  costs, ending contracts), **Tuk-tuks & areas** (add tuk-tuks, nicknames,
+  areas), and **Logs**.
 
-Sales accounts are created in Admin → Sales team with a **username** and
+The database enforces the same split (`schema.sql` §16): sales people can't
+delete leads, customers, contracts or ads, can't change tuk-tuks or areas,
+and can't see or change commissions, payouts or costs. Each contract copies
+its sales person's commission terms when it is signed.
+
+Sales accounts are created in Admin → Sales performance with a **username** and
 password — no email needed (behind the scenes the username maps to
 `<username>@staff.villagemedia.local`). This needs the `manage-staff` edge
 function deployed:
@@ -83,6 +99,9 @@ npx supabase functions deploy manage-staff --project-ref <your-ref>
 
 For an existing database, run **section 14** of `supabase/schema.sql` once.
 It also closes a hole where any signed-in user could edit their own role.
+Then run **section 15** (super admins, activity log) and **section 16**
+(sales vs main admin permissions, commissions, payouts, costs), and redeploy
+`manage-staff`.
 
 ## 3. Run it
 
@@ -146,15 +165,6 @@ nav/home buttons, auto-restart, remote admin.
    docs; needs a factory-reset tablet and one `adb` command before first
    Google sign-in.
 
-### The PIN screen itself
-
-This is already built and needs no further setup: a driver taps "▶ Play
-Ads," picks their name, enters their PIN (Admin → Drivers to add/manage
-these), and the ad cycle starts fullscreen. Tapping the screen during
-playback brings up a PIN prompt to exit back to the welcome screen; if
-nobody enters a digit within 2 seconds it silently disappears and playback
-continues, undisturbed.
-
 ## How offline resilience works
 
 Tuk-tuks won't always have signal. The player is built to keep running
@@ -181,12 +191,11 @@ without one:
 ```
 src/
   lib/            Supabase client, offline media cache, playlist manifest,
-                   tuktuks/groups/drivers APIs, kiosk PIN verification
+                   tuktuks/groups/staff/sales APIs
   hooks/          useWakeLock (screen-on), useOnlineStatus
   context/        Auth (session + admin profile)
-  components/     Shared admin UI, PinPad, DriverPicker, tuk-tuk picker
-  pages/          Landing, admin pages (dashboard, ads, tuk-tuks, groups,
-                   drivers), the kiosk player itself
+  components/     Shared admin UI, tuk-tuk picker, signature pad
+  pages/          Staff portal pages (admin/ and sales/), the kiosk player
 supabase/
   schema.sql      Full DB schema — tables, RLS policies, RPCs, storage bucket
 ```

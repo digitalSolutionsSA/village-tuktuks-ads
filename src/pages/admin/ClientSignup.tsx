@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { SignaturePad, type SignaturePadHandle } from '../../components/SignaturePad'
 import {
   ADVERTISING_AREAS,
   AGREEMENT_IS_DRAFT,
-  AGREEMENT_SECTIONS,
   DEFAULT_AD_DURATION,
   INITIAL_TERM,
   SIGNATURE_DECLARATION,
+  TERM_OPTIONS,
   VAT_OPTIONS,
   VILLAGE_MEDIA,
+  agreementSectionsFor,
 } from '../../lib/agreementText'
 import { createSignedAgreement, downloadBlob, emailAgreement } from '../../lib/clientsApi'
 import type { AgreementPdfInput } from '../../lib/agreementPdf'
@@ -49,14 +50,14 @@ const emptySchedule = (): Schedule => ({
 })
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-3 text-base text-white outline-none focus:border-purple-400'
+  'w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-3 text-base text-white outline-none focus:border-brand-400'
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm text-zinc-300">
         {label}
-        {required && <span className="text-purple-400"> *</span>}
+        {required && <span className="text-brand-400"> *</span>}
       </span>
       {children}
     </label>
@@ -66,7 +67,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 export function ClientSignup() {
   const { profile } = useAuth()
   // Shared by both portals; links stay inside whichever one we're in.
-  const base = useLocation().pathname.startsWith('/sales') ? '/sales' : '/admin'
+  const base = '/admin'
   const [params] = useSearchParams()
   const [lead, setLead] = useState<Lead | null>(null)
   const [packages, setPackages] = useState<SalesPackage[]>([])
@@ -252,7 +253,7 @@ export function ClientSignup() {
           </button>
           <button
             onClick={restart}
-            className="rounded-lg bg-purple-500 px-4 py-3 font-medium text-white hover:bg-purple-400"
+            className="rounded-lg bg-brand-500 px-4 py-3 font-medium text-on-accent hover:bg-brand-400"
           >
             Sign up another client
           </button>
@@ -282,7 +283,7 @@ export function ClientSignup() {
       <ol className="mb-6 flex gap-1">
         {STEPS.map((label, i) => (
           <li key={label} className="flex-1">
-            <div className={`h-1.5 rounded-full ${i <= step ? 'bg-purple-500' : 'bg-zinc-800'}`} />
+            <div className={`h-1.5 rounded-full ${i <= step ? 'bg-brand-500' : 'bg-zinc-800'}`} />
             <span className={`mt-1 hidden text-xs sm:block ${i === step ? 'text-white' : 'text-zinc-500'}`}>
               {label}
             </span>
@@ -339,7 +340,7 @@ export function ClientSignup() {
                     type="button"
                     onClick={() => applyPackage(p)}
                     className={`rounded-lg border px-4 py-3 text-left text-sm ${
-                      packageId === p.id ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-300'
+                      packageId === p.id ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-300'
                     }`}
                   >
                     <span className="block font-medium">{p.name}</span>
@@ -361,7 +362,7 @@ export function ClientSignup() {
                       setS('areas', on ? schedule.areas.filter((a) => a !== area) : [...schedule.areas, area])
                     }
                     className={`rounded-lg border px-4 py-3 text-sm ${
-                      on ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-300'
+                      on ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-300'
                     }`}
                   >
                     {on ? '✓ ' : ''}
@@ -389,7 +390,7 @@ export function ClientSignup() {
                     type="button"
                     onClick={() => setS('vat', o.value)}
                     className={`flex-1 rounded-lg border px-2 py-3 text-sm ${
-                      schedule.vat === o.value ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-300'
+                      schedule.vat === o.value ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-300'
                     }`}
                   >
                     {o.label}
@@ -400,8 +401,21 @@ export function ClientSignup() {
             <Field label="Campaign start date" required>
               <input type="date" className={inputClass} value={schedule.campaign_start} onChange={(e) => setS('campaign_start', e.target.value)} />
             </Field>
-            <Field label="Initial term">
-              <input className={`${inputClass} opacity-70`} value={INITIAL_TERM} readOnly />
+            <Field label="Initial term" required>
+              <div className="flex gap-2">
+                {TERM_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setS('initial_term', o.value)}
+                    className={`flex-1 rounded-lg border px-2 py-3 text-sm ${
+                      schedule.initial_term === o.value ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
             </Field>
           </div>
           <Field label="Selected package / notes">
@@ -414,7 +428,7 @@ export function ClientSignup() {
         <div>
           <p className="mb-3 text-sm text-zinc-400">Hand the tablet to the client to read the terms.</p>
           <div className="mb-4 max-h-[55vh] overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-300">
-            {AGREEMENT_SECTIONS.map((section) => (
+            {agreementSectionsFor(schedule.initial_term).map((section) => (
               <section key={section.title} className="mb-4">
                 <h3 className="mb-1 font-semibold text-white">{section.title}</h3>
                 {section.clauses.map((c) => (
@@ -426,7 +440,7 @@ export function ClientSignup() {
             ))}
           </div>
           <label className="flex items-start gap-3 rounded-lg border border-zinc-800 p-4">
-            <input type="checkbox" className="mt-1 h-5 w-5 accent-purple-500" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+            <input type="checkbox" className="mt-1 h-5 w-5 accent-brand-500" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
             <span className="text-sm text-zinc-200">
               I have read and accept these terms and the Campaign Schedule on behalf of{' '}
               {client.company_name || client.legal_name}.
@@ -483,7 +497,7 @@ export function ClientSignup() {
         <button
           onClick={next}
           disabled={!canContinue || saving}
-          className="rounded-lg bg-purple-500 px-6 py-3 font-medium text-white hover:bg-purple-400 disabled:opacity-50"
+          className="rounded-lg bg-brand-500 px-6 py-3 font-medium text-on-accent hover:bg-brand-400 disabled:opacity-50"
         >
           {step === STEPS.length - 1 ? (saving ? 'Saving…' : 'Sign & save agreement') : step === 2 ? 'Accept & continue' : 'Next'}
         </button>
@@ -503,7 +517,7 @@ function SignatureField({
     <div>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-sm text-zinc-300">
-          Sign below<span className="text-purple-400"> *</span>
+          Sign below<span className="text-brand-400"> *</span>
         </span>
         <button type="button" onClick={() => padRef.current?.clear()} className="text-sm text-zinc-400 hover:text-white">
           Clear

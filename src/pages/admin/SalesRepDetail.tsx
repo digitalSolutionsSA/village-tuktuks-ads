@@ -1,45 +1,55 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { LEAD_STATUS_STYLES, StatCard } from '../../components/StatCard'
-import { useAuth } from '../../context/AuthContext'
+import { ActivityItem } from './ActivityLog'
 import { listAgreements } from '../../lib/clientsApi'
 import { computeStats, formatRand, listLeads } from '../../lib/salesApi'
 import {
+  deleteStaff,
   formatDuration,
   getStaff,
   isStaffOnline,
+  listStaffActivity,
   listStaffSessions,
   onlineMs,
   timeAgo,
   updateStaff,
 } from '../../lib/staffApi'
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, type ClientAgreementWithClient, type Lead, type Profile, type StaffSession } from '../../types'
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, type ClientAgreementWithClient, type Lead, type Profile, type StaffActivity, type StaffSession } from '../../types'
 
 const LOG_DAYS = 14
 const inputClass =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-400'
+  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-400'
 
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString('en-CA')
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
 
 export function SalesRepDetail() {
   const { id } = useParams()
-  const { profile: me } = useAuth()
+  const navigate = useNavigate()
   const [rep, setRep] = useState<Profile | null>(null)
   const [sessions, setSessions] = useState<StaffSession[]>([])
+  const [activity, setActivity] = useState<StaffActivity[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
   const [agreements, setAgreements] = useState<ClientAgreementWithClient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [edit, setEdit] = useState({ display_name: '', phone: '', monthly_target: '', role: 'sales' as 'sales' | 'admin' })
+  const [edit, setEdit] = useState({ display_name: '', phone: '', monthly_target: '' })
 
   const load = useCallback(async () => {
     if (!id) return
     try {
-      const [p, ss, l, a] = await Promise.all([getStaff(id), listStaffSessions(LOG_DAYS, id), listLeads(id), listAgreements(id)])
+      const [p, ss, l, a, act] = await Promise.all([
+        getStaff(id),
+        listStaffSessions(LOG_DAYS, id),
+        listLeads(id),
+        listAgreements(id),
+        listStaffActivity(LOG_DAYS, id),
+      ])
       setRep(p)
       setSessions(ss)
+      setActivity(act)
       setLeads(l)
       setAgreements(a)
       if (p) {
@@ -47,7 +57,6 @@ export function SalesRepDetail() {
           display_name: p.display_name ?? '',
           phone: p.phone ?? '',
           monthly_target: p.monthly_target === null ? '' : String(p.monthly_target),
-          role: p.role === 'admin' ? 'admin' : 'sales',
         })
       }
     } catch (err) {
@@ -71,6 +80,19 @@ export function SalesRepDetail() {
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save.')
+    }
+  }
+
+  const remove = async () => {
+    if (!rep) return
+    const name = rep.display_name || rep.username
+    if (!confirm(`Permanently delete ${name}? They can no longer sign in. Their clients, contracts and leads are kept, and they stay in the logs.`)) return
+    setError(null)
+    try {
+      await deleteStaff(rep.id)
+      navigate('/admin/sales-team', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete.')
     }
   }
 
@@ -182,6 +204,17 @@ export function SalesRepDetail() {
             </div>
           )}
 
+          <h2 className="mb-3 mt-6 font-medium text-white">Activity (last {LOG_DAYS} days)</h2>
+          {activity.length === 0 ? (
+            <p className="text-sm text-zinc-500">Nothing logged yet.</p>
+          ) : (
+            <div className="max-h-96 space-y-1.5 overflow-y-auto">
+              {activity.map((a) => (
+                <ActivityItem key={a.id} item={a} />
+              ))}
+            </div>
+          )}
+
           <h2 className="mb-3 mt-6 font-medium text-white">Account</h2>
           <div className="grid gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-2">
             <label className="text-sm text-zinc-300">
@@ -196,22 +229,15 @@ export function SalesRepDetail() {
               Monthly target (contracts)
               <input inputMode="numeric" className={inputClass} value={edit.monthly_target} onChange={(e) => setEdit({ ...edit, monthly_target: e.target.value.replace(/\D/g, '') })} />
             </label>
-            <label className="text-sm text-zinc-300">
-              Access
-              <select
-                className={inputClass}
-                disabled={rep.id === me?.id}
-                value={edit.role}
-                onChange={(e) => setEdit({ ...edit, role: e.target.value as 'sales' | 'admin' })}
-              >
-                <option value="sales">Sales rep — sales portal only</option>
-                <option value="admin">Management — full access</option>
-              </select>
-            </label>
             {error && <p className="text-sm text-red-400 sm:col-span-2">{error}</p>}
             {notice && <p className="text-sm text-green-400 sm:col-span-2">{notice}</p>}
-            <div className="flex justify-end sm:col-span-2">
-              <button onClick={save} className="rounded-lg bg-purple-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-purple-400">
+            <div className="flex justify-end gap-2 sm:col-span-2">
+              {!rep.super_admin && (
+                <button onClick={remove} className="rounded-lg border border-red-900/60 px-5 py-2.5 text-sm text-red-300 hover:bg-red-950/40">
+                  Delete person
+                </button>
+              )}
+              <button onClick={save} className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-brand-400">
                 Save
               </button>
             </div>

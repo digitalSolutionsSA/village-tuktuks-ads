@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import { ADVERTISING_AREAS } from '../../lib/agreementText'
@@ -11,9 +11,14 @@ import type { Ad, Tuktuk, TuktukGroup } from '../../types'
  * from the real fleet and today's real ad rotation plus a few stated
  * assumptions the rep can adjust. Never presented as actual results
  * (agreement clause 6), and never attached to another business's name.
+ * Part of the pitch page (#projection); `?lead=<id>` pre-fills it from a lead.
  */
 
 const AD_SECONDS = 10
+const SLOT_OPTIONS = [
+  { seconds: 5, label: 'Standard · 5s' },
+  { seconds: 10, label: 'Premium · 10s' },
+] as const
 const BUSINESS_TYPES = [
   'Clothing store',
   'Restaurant / takeaway',
@@ -31,10 +36,11 @@ const BUSINESS_TYPES = [
 
 type Mode = 'own' | 'example'
 
-export function Projection() {
+export function ProjectionSection({ heading }: { heading: ReactNode }) {
   const [params] = useSearchParams()
   const leadId = params.get('lead')
   const [mode, setMode] = useState<Mode>('own')
+  const [slotSeconds, setSlotSeconds] = useState<number>(AD_SECONDS)
   const [name, setName] = useState(params.get('name') ?? '')
   const [type, setType] = useState(BUSINESS_TYPES[0])
   const [area, setArea] = useState<string>(params.get('area') ?? 'All areas')
@@ -88,7 +94,7 @@ export function Projection() {
     return { screens: inArea || tuktuks.length, areaMatched: inArea > 0 }
   }, [area, tuktuks, groups])
 
-  const rotationSeconds = ads.reduce((s, a) => s + (a.duration_seconds || AD_SECONDS), 0) + AD_SECONDS
+  const rotationSeconds = ads.reduce((s, a) => s + (a.duration_seconds || AD_SECONDS), 0) + slotSeconds
   const playsPerScreenPerDay = Math.floor((hoursPerDay * 3600) / rotationSeconds)
   const playsPerDay = playsPerScreenPerDay * screens
   // Only plays with someone on board count as views.
@@ -107,20 +113,15 @@ export function Projection() {
       ? name.trim() || 'Your business'
       : `${type} in ${area === 'All areas' ? 'your area' : area} (example)`
 
-  const signupHref = leadId ? `/sales/signup?lead=${leadId}` : '/sales/signup'
+  const signupHref = leadId ? `/admin/signup?lead=${leadId}` : '/admin/signup'
   const fmt = (n: number) => n.toLocaleString('en-ZA')
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-white">Ad projection</h1>
-        <Link to="/sales/pitch" className="text-sm text-zinc-400 hover:text-white">
-          ← Pitch
-        </Link>
-      </div>
+    <div id="projection" className="scroll-mt-36">
+      {heading}
 
-      <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-        <div className="mb-4 flex gap-2">
+      <div data-reveal className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+        <div className="mb-4 flex flex-wrap gap-2">
           {(
             [
               ['own', "Customer's business"],
@@ -131,14 +132,27 @@ export function Projection() {
               key={m}
               onClick={() => setMode(m)}
               className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
-                mode === m ? 'border-purple-400 bg-purple-500/20 text-white' : 'border-zinc-700 text-zinc-400'
+                mode === m ? 'border-brand-400 bg-brand-500/20 text-white' : 'border-zinc-700 text-zinc-400'
               }`}
             >
               {text}
             </button>
           ))}
+          <div className="flex flex-1 gap-2">
+            {SLOT_OPTIONS.map((o) => (
+              <button
+                key={o.seconds}
+                onClick={() => setSlotSeconds(o.seconds)}
+                className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
+                  slotSeconds === o.seconds ? 'border-logo-gold bg-logo-gold/20 text-white' : 'border-zinc-700 text-zinc-400'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
           {mode === 'own' ? (
             <label className="text-sm text-zinc-300">
               The customer's business name
@@ -146,7 +160,7 @@ export function Projection() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Thandi's Boutique"
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base text-white outline-none focus:border-purple-400"
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base text-white outline-none focus:border-brand-400"
               />
             </label>
           ) : (
@@ -215,31 +229,32 @@ export function Projection() {
         </div>
       </div>
 
-      <div className="mb-4 rounded-lg border border-amber-700/50 bg-amber-950/40 px-4 py-2.5 text-sm text-amber-200">
+      <div data-reveal className="mb-4 rounded-lg border border-amber-700/50 bg-amber-950/40 px-4 py-2.5 text-sm text-amber-200">
         <b>Projection</b> — estimated figures for illustration, not actual results. Real plays and views vary with routes,
         operating hours and passenger numbers.
       </div>
 
-      <section className="mb-6 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 p-6 sm:p-8">
-        <p className="text-sm uppercase tracking-widest text-purple-200">Projected for</p>
-        <h2 className="mb-5 text-3xl font-bold text-white sm:text-4xl">{label}</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
+      <div data-reveal="scale" className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 sm:p-10 lg:p-14">
+        <div className="brand-stripe absolute inset-x-0 top-0" aria-hidden />
+        <p className="text-sm uppercase tracking-widest text-on-accent/75">Projected for</p>
+        <h2 className="mb-5 text-3xl font-bold text-on-accent sm:text-4xl">{label}</h2>
+        <div className="grid gap-6 sm:grid-cols-3">
           <div>
-            <p className="text-4xl font-bold tabular-nums text-white sm:text-5xl">{fmt(playsPerDay)}</p>
-            <p className="text-purple-100">plays per day</p>
+            <p className="text-[clamp(2.25rem,5vw,3.75rem)] font-black tabular-nums leading-none text-on-accent">{fmt(playsPerDay)}</p>
+            <p className="text-on-accent/80">plays per day</p>
           </div>
           <div>
-            <p className="text-4xl font-bold tabular-nums text-white sm:text-5xl">{fmt(viewsPerDay)}</p>
-            <p className="text-purple-100">passenger views per day</p>
+            <p className="text-[clamp(2.25rem,5vw,3.75rem)] font-black tabular-nums leading-none text-on-accent">{fmt(viewsPerDay)}</p>
+            <p className="text-on-accent/80">passenger views per day</p>
           </div>
           <div>
-            <p className="text-4xl font-bold tabular-nums text-white sm:text-5xl">{fmt(perMonth(viewsPerDay))}</p>
-            <p className="text-purple-100">passenger views per month</p>
+            <p className="text-[clamp(2.25rem,5vw,3.75rem)] font-black tabular-nums leading-none text-on-accent">{fmt(perMonth(viewsPerDay))}</p>
+            <p className="text-on-accent/80">passenger views per month</p>
           </div>
         </div>
-      </section>
+      </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+      <div data-reveal-stagger className="mb-6 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
           <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-zinc-500">
             {operating && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />}
@@ -262,29 +277,33 @@ export function Projection() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+      <div data-reveal className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <p className="mb-4 text-sm font-medium text-zinc-300">Projected passenger views — first 12 months</p>
-        <div className="flex h-40 items-end gap-1.5">
+        <div data-bars className="flex h-40 items-end gap-1 sm:h-56 sm:gap-2">
           {Array.from({ length: 12 }, (_, i) => {
             const cumulative = perMonth(viewsPerDay) * (i + 1)
             const max = perMonth(viewsPerDay) * 12 || 1
             return (
               <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
-                <div className="w-full rounded-t bg-purple-500" style={{ height: `${Math.max(3, (cumulative / max) * 100)}%` }} />
+                <div
+                  data-bar
+                  className="w-full origin-bottom rounded-t bg-gradient-to-t from-brand-600 to-brand-400 transition-[height] duration-500"
+                  style={{ height: `${Math.max(3, (cumulative / max) * 100)}%` }}
+                />
                 <span className="text-[10px] text-zinc-500">M{i + 1}</span>
               </div>
             )
           })}
         </div>
         <p className="mt-3 text-sm text-zinc-400">
-          ≈ <b className="text-white">{fmt(perMonth(viewsPerDay) * 12)}</b> passenger views over the 12-month term.
+          ≈ <b className="text-white">{fmt(perMonth(viewsPerDay) * 12)}</b> passenger views over 12 months.
         </p>
       </div>
 
-      <details className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+      <details data-reveal className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
         <summary className="cursor-pointer text-zinc-300">How this is estimated</summary>
         <ul className="mt-2 space-y-1">
-          <li>• Today's real rotation: {ads.length} ads running, plus one new {AD_SECONDS}-second slot = {rotationSeconds}s per loop.</li>
+          <li>• Today's real rotation: {ads.length} ads running, plus one new {slotSeconds}-second slot = {rotationSeconds}s per loop.</li>
           <li>• {screens} active screens{areaMatched ? ` in ${area}` : ''} (from the live fleet{area !== 'All areas' && !areaMatched ? `; no tuk-tuk group named ${area} yet, so the whole fleet is used` : ''}).</li>
           <li>• Assumes {hoursPerDay} operating hours a day from 06:00 passengers on board {occupancy}% of that time, {passengers} per trip.</li>
           <li>• As more advertisers join, the loop gets longer and each ad plays less often.</li>
@@ -292,11 +311,11 @@ export function Projection() {
         </ul>
       </details>
 
-      <div className="rounded-2xl border border-purple-500/40 bg-purple-500/10 p-6 text-center">
+      <div data-reveal className="rounded-2xl border border-brand-500/40 bg-brand-500/10 p-6 text-center">
         <p className="mb-4 text-lg text-white">Want these screens working for {mode === 'own' && name.trim() ? name.trim() : 'your business'}?</p>
         <Link
           to={signupHref}
-          className="inline-block rounded-xl bg-green-600 px-8 py-4 text-lg font-semibold text-white hover:bg-green-500"
+          className="inline-block rounded-xl bg-green-600 px-8 py-4 text-lg font-semibold text-on-accent hover:bg-green-500"
         >
           ✎ Sign up now
         </Link>

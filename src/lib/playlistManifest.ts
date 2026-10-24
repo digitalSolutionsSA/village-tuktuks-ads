@@ -1,4 +1,4 @@
-import type { MarqueeMessage, PlaylistItem, SidebarAd } from '../types'
+import type { PlaylistItem } from '../types'
 
 function readLocal<T>(key: string): T[] {
   try {
@@ -28,28 +28,4 @@ export function loadManifest(tuktukId: number): PlaylistItem[] {
 
 export function saveManifest(tuktukId: number, items: PlaylistItem[]) {
   writeLocal(key(tuktukId), items)
-}
-
-function sidebarKey(tuktukId: number) {
-  return `tuktuk-ads:sidebar:${tuktukId}`
-}
-
-export function loadSidebarManifest(tuktukId: number): SidebarAd[] {
-  return readLocal(sidebarKey(tuktukId))
-}
-
-export function saveSidebarManifest(tuktukId: number, items: SidebarAd[]) {
-  writeLocal(sidebarKey(tuktukId), items)
-}
-
-function marqueeKey(tuktukId: number) {
-  return `tuktuk-ads:marquee:${tuktukId}`
-}
-
-export function loadMarqueeManifest(tuktukId: number): MarqueeMessage[] {
-  return readLocal(marqueeKey(tuktukId))
-}
-
-export function saveMarqueeManifest(tuktukId: number, items: MarqueeMessage[]) {
-  writeLocal(marqueeKey(tuktukId), items)
 }

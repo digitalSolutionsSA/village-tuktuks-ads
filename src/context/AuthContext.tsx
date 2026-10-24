@@ -16,9 +16,19 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const HEARTBEAT_MS = 60_000
 
-/** Where each role lands after signing in. */
-export function homeFor(profile: Profile | null) {
-  return profile?.role === 'sales' ? '/sales' : '/admin'
+/** Everyone on staff — sales reps included — has full admin access. */
+export function isAdminProfile(profile: Profile | null) {
+  return Boolean(profile && (profile.role === 'admin' || profile.role === 'sales') && profile.active !== false)
+}
+
+/** Management: manages staff, sees sales performance and the activity log. */
+export function isSuperAdmin(profile: Profile | null) {
+  return isAdminProfile(profile) && Boolean(profile?.super_admin)
+}
+
+/** Everyone on staff shares one portal; its home page is the sales pitch. */
+export function homeFor(_profile: Profile | null) {
+  return '/admin'
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -74,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session])
 
   // Staff heartbeat: powers "online now" and the online-hours log on Admin → Sales team.
-  const isStaff = profile?.role === 'admin' || profile?.role === 'sales'
+  const isStaff = isAdminProfile(profile)
   useEffect(() => {
     if (!isSupabaseConfigured || !isStaff) return
     const beat = () => {

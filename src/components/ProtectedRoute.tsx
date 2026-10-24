@@ -1,22 +1,25 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { homeFor, useAuth } from '../context/AuthContext'
+import { homeFor, isSuperAdmin, useAuth } from '../context/AuthContext'
 import { isSupabaseConfigured } from '../lib/supabase'
 import type { UserRole } from '../types'
 
 /**
- * Signed-in users whose role isn't in `roles` are sent to their own portal —
- * e.g. a sales rep opening /admin lands on /sales. The database's RLS policies
- * enforce the same split, so this is about navigation, not security.
+ * Signed-in staff only. `superAdmin` pages (sales performance, logs) send
+ * everyone else back to the portal home. The database's RLS policies enforce
+ * the same split, so this is about navigation, not security.
  */
 export function ProtectedRoute({
   children,
   roles,
   loginPath = '/admin/login',
+  superAdmin = false,
 }: {
   children: ReactNode
   roles: UserRole[]
   loginPath?: string
+  /** Management-only pages (sales performance, logs). */
+  superAdmin?: boolean
 }) {
   const { session, profile, loading, signOut } = useAuth()
 
@@ -48,6 +51,7 @@ export function ProtectedRoute({
   }
 
   if (!roles.includes(profile.role)) return <Navigate to={homeFor(profile)} replace />
+  if (superAdmin && !isSuperAdmin(profile)) return <Navigate to="/admin" replace />
 
   return <>{children}</>
 }

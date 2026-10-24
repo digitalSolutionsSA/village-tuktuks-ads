@@ -4,7 +4,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { STAFF_EMAIL_DOMAIN } from '../lib/staffApi'
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base text-white outline-none focus:border-purple-400'
+  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base text-white outline-none focus:border-brand-400'
 
 /** "My account" in both portals — lets anyone signed in change their own password. */
 export function Account() {
@@ -76,7 +76,7 @@ export function Account() {
         <button
           type="submit"
           disabled={saving}
-          className="w-full rounded-lg bg-purple-500 py-3 font-medium text-white hover:bg-purple-400 disabled:opacity-50"
+          className="w-full rounded-lg bg-brand-500 py-3 font-medium text-on-accent hover:bg-brand-400 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Change password'}
         </button>
