@@ -11,7 +11,7 @@ them.
   screen; the only other thing on it is the Village Media logo (top-left),
   which opens the staff portal. After every 5 ads one of the four passenger
   notices plays for 10 seconds (CCTV → Disclaimer → No smoking → Ride rates,
-  in turn) — they're built into the player (`public/Ads/banner 1–4.png`) and
+  in turn) — they're built into the player (`public/Ads/notice-1…4-*.webp`, 2000×953) and
   can't be switched off. With no ads scheduled, the notices play on their own.
   The first tap makes it full screen.
   Works offline: once media has loaded, it keeps cycling from a local cache

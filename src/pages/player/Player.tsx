@@ -41,10 +41,10 @@ function saveDeviceTuktuk(tuktukId: number) {
  * With no ads scheduled, the notices play on their own.
  */
 const NOTICES = [
-  { title: "You're on CCTV", url: '/Ads/banner%201.png' },
-  { title: 'Disclaimer', url: '/Ads/banner%202.png' },
-  { title: 'No smoking, eating or drinking', url: '/Ads/banner%203.png' },
-  { title: 'Ride rates', url: '/Ads/banner%204.png' },
+  { title: "You're on CCTV", url: '/Ads/notice-1-cctv.webp' },
+  { title: 'Disclaimer', url: '/Ads/notice-2-disclaimer.webp' },
+  { title: 'No smoking, eating or drinking', url: '/Ads/notice-3-no-smoking.webp' },
+  { title: 'Ride rates', url: '/Ads/notice-4-ride-rates.webp' },
 ]
 const NOTICE_EVERY = 6
 const NOTICE_SECONDS = 10
