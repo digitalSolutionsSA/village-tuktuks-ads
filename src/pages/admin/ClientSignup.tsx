@@ -6,12 +6,15 @@ import {
   ADVERTISING_AREAS,
   AGREEMENT_IS_DRAFT,
   DEFAULT_AD_DURATION,
+  EXTRA_AREA_FEE,
   INITIAL_TERM,
   SIGNATURE_DECLARATION,
   TERM_OPTIONS,
   VAT_OPTIONS,
   VILLAGE_MEDIA,
   agreementSectionsFor,
+  countAreas,
+  monthlyFeeFor,
 } from '../../lib/agreementText'
 import { createSignedAgreement, downloadBlob, emailAgreement } from '../../lib/clientsApi'
 import type { AgreementPdfInput } from '../../lib/agreementPdf'
@@ -42,6 +45,7 @@ const emptySchedule = (): Schedule => ({
   effective_date: today(),
   areas: [],
   other_area: '',
+  package_fee: '',
   monthly_fee: '',
   vat: '',
   campaign_start: '',
@@ -81,6 +85,10 @@ export function ClientSignup() {
   const [clientSig, setClientSig] = useState('')
   const [padEmpty, setPadEmpty] = useState(true)
   const padRef = useRef<SignaturePadHandle>(null)
+  // The client initials once; the PDF puts the same initials on every page.
+  const [clientInitials, setClientInitials] = useState('')
+  const [initialsEmpty, setInitialsEmpty] = useState(true)
+  const initialsRef = useRef<SignaturePadHandle>(null)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -96,7 +104,7 @@ export function ClientSignup() {
     setSchedule((s) => ({
       ...s,
       areas: p.areas.length ? p.areas.filter((a) => (ADVERTISING_AREAS as readonly string[]).includes(a)) : s.areas,
-      monthly_fee: p.monthly_fee !== null ? String(p.monthly_fee) : s.monthly_fee,
+      package_fee: p.monthly_fee !== null ? String(p.monthly_fee) : s.package_fee,
       package_notes: p.name + (p.description ? ` — ${p.description}` : ''),
     }))
   }
@@ -133,17 +141,22 @@ export function ClientSignup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadParam, packageParam])
 
+  // The package fee covers one area; the Monthly Fee on the contract adds the extra areas.
+  const areaCount = countAreas(schedule.areas, schedule.other_area)
+  const extraAreas = Math.max(0, areaCount - 1)
+  const monthlyFee = monthlyFeeFor(schedule.package_fee, areaCount)
+
   const emailValid = /^\S+@\S+\.\S+$/.test(client.email.trim())
   const canContinue = [
     Boolean(client.legal_name.trim() && emailValid && client.telephone.trim()),
     Boolean(
-      (schedule.areas.length || schedule.other_area.trim()) &&
-        schedule.monthly_fee.trim() &&
+      areaCount &&
+        monthlyFee !== null &&
         schedule.vat &&
         schedule.campaign_start,
     ),
     agreed,
-    Boolean(clientSigner.name.trim() && !padEmpty),
+    Boolean(clientSigner.name.trim() && !padEmpty && !initialsEmpty),
     Boolean(vmSigner.name.trim() && !padEmpty),
   ][step]
 
@@ -171,6 +184,7 @@ export function ClientSignup() {
     }
     if (step === 3) {
       setClientSig(padRef.current!.toPng())
+      setClientInitials(initialsRef.current!.toPng())
     }
     if (step < STEPS.length - 1) {
       setStep(step + 1)
@@ -184,8 +198,8 @@ export function ClientSignup() {
     try {
       const res = await createSignedAgreement({
         client,
-        schedule,
-        clientSigner: { ...clientSigner, signaturePng: clientSig },
+        schedule: { ...schedule, monthly_fee: monthlyFee !== null ? String(monthlyFee) : '' },
+        clientSigner: { ...clientSigner, signaturePng: clientSig, initialsPng: clientInitials },
         vmSigner: { ...vmSigner, signaturePng: padRef.current!.toPng() },
       }, lead?.id)
       setResult(res)
@@ -379,8 +393,15 @@ export function ClientSignup() {
             Digital ad duration: <span className="text-zinc-200">{DEFAULT_AD_DURATION}</span>
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Monthly fee (R)" required>
-              <input inputMode="decimal" className={inputClass} placeholder="e.g. 1500" value={schedule.monthly_fee} onChange={(e) => setS('monthly_fee', e.target.value.replace(/[^\d.,\s]/g, ''))} />
+            <Field label="Package fee for one area (R)" required>
+              <input inputMode="decimal" className={inputClass} placeholder="e.g. 950" value={schedule.package_fee} onChange={(e) => setS('package_fee', e.target.value.replace(/[^\d.,\s]/g, ''))} />
+              <span className="mt-1 block text-sm text-zinc-400">
+                {extraAreas
+                  ? `+ ${extraAreas} extra ${extraAreas === 1 ? 'area' : 'areas'} × ${formatRand(EXTRA_AREA_FEE)} = `
+                  : `${formatRand(EXTRA_AREA_FEE)} per extra area · `}
+                Monthly fee{' '}
+                <b className="text-white">{monthlyFee !== null ? formatRand(monthlyFee) : '—'}</b>
+              </span>
             </Field>
             <Field label="VAT" required>
               <div className="flex gap-2">
@@ -465,6 +486,16 @@ export function ClientSignup() {
             </Field>
           </div>
           <SignatureField key="client" padRef={padRef} onChange={setPadEmpty} />
+          <div className="max-w-xs">
+            <SignatureField
+              key="client-initials"
+              padRef={initialsRef}
+              onChange={setInitialsEmpty}
+              label="Initials"
+              hint="Placed on every page of the agreement."
+              padClassName="h-28 w-full"
+            />
+          </div>
         </div>
       )}
 
@@ -509,21 +540,29 @@ export function ClientSignup() {
 function SignatureField({
   padRef,
   onChange,
+  label = 'Sign below',
+  hint,
+  padClassName,
 }: {
   padRef: React.RefObject<SignaturePadHandle | null>
   onChange: (empty: boolean) => void
+  label?: string
+  hint?: string
+  padClassName?: string
 }) {
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <span className="text-sm text-zinc-300">
-          Sign below<span className="text-brand-400"> *</span>
+          {label}
+          <span className="text-brand-400"> *</span>
+          {hint && <span className="block text-xs text-zinc-500">{hint}</span>}
         </span>
         <button type="button" onClick={() => padRef.current?.clear()} className="text-sm text-zinc-400 hover:text-white">
           Clear
         </button>
       </div>
-      <SignaturePad ref={padRef} onChange={onChange} />
+      <SignaturePad ref={padRef} onChange={onChange} className={padClassName} />
     </div>
   )
 }

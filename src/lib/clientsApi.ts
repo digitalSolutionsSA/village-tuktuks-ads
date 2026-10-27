@@ -18,6 +18,22 @@ export interface SignedAgreementResult {
 }
 
 /**
+ * Super admins only (enforced by RLS): permanently removes a client, all its agreements
+ * (cascade) and their signed PDFs. Leads and ads linked to the client are kept, just unlinked.
+ */
+export async function deleteClient(clientId: string, pdfPaths: string[]) {
+  if (!isSupabaseConfigured) throw new Error(DEMO_ERROR)
+  // RLS returns no error when a delete is not allowed — ask for the row back to tell the difference.
+  const { data, error } = await supabase.from('clients').delete().eq('id', clientId).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Only a main admin can delete clients.')
+  if (pdfPaths.length) {
+    const { error: storageError } = await supabase.storage.from(CONTRACTS_BUCKET).remove(pdfPaths)
+    if (storageError) console.error('[clients] client deleted but its PDFs were not', storageError)
+  }
+}
+
+/**
  * Saves the client, generates + uploads the signed PDF, then records the agreement.
  * The agreement row is only written once its PDF is safely stored.
  */

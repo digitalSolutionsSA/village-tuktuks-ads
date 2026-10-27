@@ -1,6 +1,8 @@
 const CACHE_NAME = 'tuktuk-ads-media-v1'
 
 const blobUrlByRemoteUrl = new Map<string, string>()
+// One download per file at a time — on a weak signal, duplicate downloads of the same video starve each other.
+const inFlight = new Map<string, Promise<string | null>>()
 
 function hasCacheApi() {
   return typeof caches !== 'undefined'
@@ -28,10 +30,20 @@ export async function getPlayableUrl(remoteUrl: string): Promise<string | null> 
     return remoteUrl
   }
 
+  const pending = inFlight.get(remoteUrl)
+  if (pending) return pending
+  const job = resolveFromCache(remoteUrl).finally(() => inFlight.delete(remoteUrl))
+  inFlight.set(remoteUrl, job)
+  return job
+}
+
+async function resolveFromCache(remoteUrl: string): Promise<string | null> {
   const cache = await caches.open(CACHE_NAME)
   let response = await cache.match(remoteUrl)
 
   if (!response) {
+    // Known offline — don't wait for a request that can only fail.
+    if (!navigator.onLine) return null
     try {
       const fresh = await fetch(remoteUrl, { mode: 'cors' })
       if (!fresh.ok) throw new Error(`HTTP ${fresh.status}`)

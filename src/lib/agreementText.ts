@@ -9,7 +9,7 @@
 export const AGREEMENT_IS_DRAFT = false
 
 /** Bump whenever the clause wording changes, so each PDF records which version was signed. */
-export const AGREEMENT_VERSION = '2026-10 final'
+export const AGREEMENT_VERSION = '2026-10 rev 2'
 
 export const VILLAGE_MEDIA = {
   name: 'Village Connect Media (Pty) Ltd',
@@ -24,13 +24,26 @@ export const VILLAGE_MEDIA = {
 
 export const ADVERTISING_AREAS = ['Meyerton', 'Vanderbijlpark', 'Heidelberg', 'Walkerville'] as const
 
+/** A package price covers one area; each extra area adds this much a month (clause 9.1). */
+export const EXTRA_AREA_FEE = 100
+
+/** Areas on a Campaign Schedule: the ticked ones, plus "Other" when filled in. */
+export const countAreas = (areas: readonly string[], otherArea: string) => areas.length + (otherArea.trim() ? 1 : 0)
+
+/** Package fee plus EXTRA_AREA_FEE for every area after the first; null if the package fee isn't a number. */
+export function monthlyFeeFor(packageFee: string, areaCount: number) {
+  const base = Number(packageFee.replace(/[^\d.]/g, ''))
+  if (!packageFee.trim() || Number.isNaN(base)) return null
+  return base + Math.max(0, areaCount - 1) * EXTRA_AREA_FEE
+}
+
 export const DEFAULT_AD_DURATION = '10 seconds, unless otherwise agreed in writing'
 
-/** Every package can be signed for either term. Clause 10 follows the one chosen (see agreementSectionsFor). */
-export const TERM_OPTIONS = [
-  { value: '12 months from Campaign Start Date', label: '12 months' },
-  { value: '1 month from Campaign Start Date', label: '1 month' },
-] as const
+/**
+ * Terms offered on new contracts. Clause 10 follows the one chosen (see agreementSectionsFor),
+ * which still handles older 1-month contracts.
+ */
+export const TERM_OPTIONS = [{ value: '12 months from Campaign Start Date', label: '12 months' }] as const
 
 export const INITIAL_TERM = TERM_OPTIONS[0].value
 
@@ -104,7 +117,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
   {
     title: '9. FEES AND PAYMENT',
     clauses: [
-      '9.1 The Client must pay the monthly advertising fee specified in the Campaign Schedule or applicable written quotation.',
+      '9.1 The Client must pay the monthly advertising fee specified in the Campaign Schedule or applicable written quotation. The package fee includes one (1) advertising area; each additional advertising area selected in the Campaign Schedule is charged at R100 (one hundred Rand) per month, and this charge is included in the Monthly Fee.',
       '9.2 Monthly advertising fees are payable in advance on or before the 25th day of each month for the following month of advertising, unless otherwise agreed in writing.',
       "9.3 Payment must be made by EFT to the bank account stated on the Service Provider's valid invoice. The Client should verify any notified change of banking details using a known contact channel before payment.",
       '9.4 If an amount remains unpaid after its due date, the Service Provider may, subject to applicable law and any required notice, suspend or pause the campaign until the account is brought up to date.',

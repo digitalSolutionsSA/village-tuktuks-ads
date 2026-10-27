@@ -11,9 +11,12 @@ export interface SignaturePadHandle {
 export function SignaturePad({
   ref,
   onChange,
+  className = 'h-48 w-full',
 }: {
   ref?: Ref<SignaturePadHandle>
   onChange?: (empty: boolean) => void
+  /** Size of the box; a smaller one suits initials. */
+  className?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
@@ -94,7 +97,7 @@ export function SignaturePad({
       onPointerMove={handleMove}
       onPointerUp={handleUp}
       onPointerCancel={handleUp}
-      className="h-48 w-full cursor-crosshair rounded-lg border-2 border-dashed border-zinc-600 bg-white"
+      className={`${className} cursor-crosshair rounded-lg border-2 border-dashed border-zinc-600 bg-white`}
       style={{ touchAction: 'none' }}
     />
   )

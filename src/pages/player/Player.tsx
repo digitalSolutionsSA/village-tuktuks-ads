@@ -13,6 +13,14 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const HEARTBEAT_INTERVAL_MS = 60 * 1000
 const DEFAULT_IMAGE_SECONDS = 8
 const VIDEO_SAFETY_TIMEOUT_MS = 90 * 1000
+/** On a weak signal a request can hang for minutes; give up and keep playing what's cached. */
+const SERVER_TIMEOUT_MS = 15 * 1000
+
+function serverTimeout(): AbortSignal {
+  const controller = new AbortController()
+  window.setTimeout(() => controller.abort(), SERVER_TIMEOUT_MS)
+  return controller.signal
+}
 
 /** A tablet that hasn't been given a tuk-tuk number yet plays every active ad in the fleet. */
 const FLEET = 0
@@ -63,7 +71,8 @@ function slotAt(n: number, ads: PlaylistItem[]): Slot {
  * `/`            — plays straight away: this tablet's tuk-tuk, or the whole fleet's ads if none is set yet.
  * `/player`      — pick this tablet's tuk-tuk number (remembered, so `/` plays it from then on).
  * `/player/7`    — plays tuk-tuk 7 and remembers it for this tablet.
- * `?preview`     — signed-in staff watching a tuk-tuk's screen; doesn't report the tablet as online.
+ * `?preview`     — signed-in admin/sales staff: tuk-tuk buttons with that tuk-tuk's screen underneath,
+ *                  which they can swipe through. Doesn't report the tablet as online.
  */
 export function Player() {
   const { id } = useParams()
@@ -78,12 +87,72 @@ export function Player() {
     if (urlValid && !preview) saveDeviceTuktuk(fromUrl)
   }, [urlValid, fromUrl, preview])
 
-  if (urlValid) return <PlayerScreen key={fromUrl} tuktukId={fromUrl} preview={preview} />
+  if (preview) return <PreviewPage tuktukId={urlValid ? fromUrl : null} />
+  if (urlValid) return <PlayerScreen key={fromUrl} tuktukId={fromUrl} preview={false} />
   if (pathname === '/') return <PlayerScreen tuktukId={loadDeviceTuktuk()} preview={false} />
-  return <PlayerSetup preview={preview} />
+  return <PlayerSetup />
 }
 
-function PlayerSetup({ preview }: { preview: boolean }) {
+/** For now the preview only offers the first 10 tuk-tuks. */
+const PREVIEW_TUKTUK_LIMIT = 10
+
+function PreviewPage({ tuktukId }: { tuktukId: number | null }) {
+  const [tuktuks, setTuktuks] = useState<Tuktuk[] | null>(null)
+
+  useEffect(() => {
+    listTuktuks()
+      .then((list) => setTuktuks(list.slice(0, PREVIEW_TUKTUK_LIMIT)))
+      .catch(() => setTuktuks([]))
+  }, [])
+
+  const selected = tuktukId ?? tuktuks?.[0]?.id ?? null
+
+  return (
+    <div className="min-h-screen bg-zinc-950 px-4 py-8 text-center">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-2 flex items-center justify-between gap-4">
+          <span className="rounded bg-brand-500/30 px-2 py-1 text-xs text-brand-200">Admin preview</span>
+          <Link to="/admin" className="rounded bg-zinc-800 px-3 py-1 text-sm text-white/80 hover:text-white">
+            Exit
+          </Link>
+        </div>
+        <h1 className="text-2xl font-semibold text-white">Preview which tuk-tuk?</h1>
+        <p className="mx-auto mb-6 mt-2 max-w-md text-sm text-zinc-400">
+          Shows exactly what that tuk-tuk plays. Swipe or use the arrows to move between ads, or leave it to play on its own.
+        </p>
+        {tuktuks === null ? (
+          <p className="text-sm text-zinc-500">Loading fleet…</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {tuktuks.map((t) => (
+              <Link
+                key={t.id}
+                to={`/player/${t.id}?preview`}
+                replace
+                className={`rounded-xl border px-4 py-4 text-lg font-semibold hover:border-brand-400 ${
+                  t.id === selected
+                    ? 'border-brand-400 bg-brand-500/20 text-white'
+                    : t.active
+                      ? 'border-zinc-700 bg-zinc-900 text-white'
+                      : 'border-zinc-800 bg-zinc-900/40 text-zinc-500'
+                }`}
+              >
+                {t.label}
+              </Link>
+            ))}
+          </div>
+        )}
+        {selected !== null && (
+          <div className="mt-8 aspect-video w-full overflow-hidden rounded-2xl border border-zinc-800 bg-black">
+            <PlayerScreen key={selected} tuktukId={selected} preview />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PlayerSetup() {
   const [tuktuks, setTuktuks] = useState<Tuktuk[] | null>(null)
 
   useEffect(() => {
@@ -94,13 +163,9 @@ function PlayerSetup({ preview }: { preview: boolean }) {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-950 p-8 text-center">
-      <h1 className="text-2xl font-semibold text-white">
-        {preview ? 'Preview which tuk-tuk?' : "Select this tablet's tuk-tuk number"}
-      </h1>
+      <h1 className="text-2xl font-semibold text-white">Select this tablet's tuk-tuk number</h1>
       <p className="max-w-md text-sm text-zinc-400">
-        {preview
-          ? 'Admin preview — shows exactly what that tuk-tuk plays, no driver sign-in needed.'
-          : 'Pick the number for this tuk-tuk. The tablet remembers it, so the home page always plays this tuk-tuk’s ads from then on.'}
+        Pick the number for this tuk-tuk. The tablet remembers it, so the home page always plays this tuk-tuk’s ads from then on.
       </p>
       {tuktuks === null ? (
         <p className="text-sm text-zinc-500">Loading fleet…</p>
@@ -109,7 +174,7 @@ function PlayerSetup({ preview }: { preview: boolean }) {
           {tuktuks.map((t) => (
             <Link
               key={t.id}
-              to={`/player/${t.id}${preview ? '?preview' : ''}`}
+              to={`/player/${t.id}`}
               className={`rounded-xl border px-4 py-6 text-lg font-semibold hover:border-brand-400 ${
                 t.active
                   ? 'border-zinc-700 bg-zinc-900 text-white'
@@ -136,6 +201,7 @@ async function fetchTuktukInfo(tuktukId: number): Promise<TuktukInfo | null> {
     .from('tuktuks')
     .select('active, label, group_id')
     .eq('id', tuktukId)
+    .abortSignal(serverTimeout())
     .maybeSingle()
   if (error || !data) return null
   return { active: data.active, label: data.label, groupId: data.group_id }
@@ -152,6 +218,7 @@ async function fetchFleetPlaylist(): Promise<PlaylistItem[]> {
     .select('*')
     .eq('is_active', true)
     .order('created_at')
+    .abortSignal(serverTimeout())
   if (error) throw error
   return ((data as Ad[]) ?? [])
     .filter((ad) => inDateRange(ad, today))
@@ -168,6 +235,7 @@ async function fetchPlaylist(tuktukId: number, groupId: string | null): Promise<
     .eq('tuktuk_id', tuktukId)
     .eq('creatives.is_active', true)
     .order('sort_order')
+    .abortSignal(serverTimeout())
 
   const groupPromise = groupId
     ? supabase
@@ -176,6 +244,7 @@ async function fetchPlaylist(tuktukId: number, groupId: string | null): Promise<
         .eq('group_id', groupId)
         .eq('creatives.is_active', true)
         .order('sort_order')
+        .abortSignal(serverTimeout())
     : Promise.resolve({ data: [], error: null } as const)
 
   const [directResult, groupResult] = await Promise.all([directPromise, groupPromise])
@@ -213,6 +282,8 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
   const rootRef = useRef<HTMLDivElement>(null)
 
   const fetchAndStore = useCallback(async () => {
+    // No signal: keep playing the saved playlist; the 'online' listener below refreshes once it's back.
+    if (!navigator.onLine) return
     try {
       const info = isFleet ? null : await fetchTuktukInfo(tuktukId)
       const gid = info?.groupId ?? null
@@ -235,6 +306,7 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
     }
     fetchAndStore()
     const interval = window.setInterval(fetchAndStore, REFRESH_INTERVAL_MS)
+    window.addEventListener('online', fetchAndStore)
 
     const channel = supabase
       .channel(`tuktuk-${tuktukId}-playlist`)
@@ -249,6 +321,7 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
 
     return () => {
       window.clearInterval(interval)
+      window.removeEventListener('online', fetchAndStore)
       supabase.removeChannel(channel)
     }
   }, [tuktukId, isFleet, fetchAndStore])
@@ -260,6 +333,7 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
     // An admin previewing from their own browser mustn't make the tablet look online.
     if (!isSupabaseConfigured || preview || isFleet) return
     const beat = () => {
+      if (!navigator.onLine) return
       supabase
         .rpc('report_heartbeat', { tuktuk_id_param: tuktukId })
         .then(undefined, () => {
@@ -281,14 +355,18 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
       return
     }
     let cancelled = false
+    // Each ad joins the rotation as soon as its own file is ready, so cached ads play at once
+    // while new ones are still downloading on a weak signal.
+    const wanted = new Set(items.map((i) => i.media_url))
+    setResolved((prev) => Object.fromEntries(Object.entries(prev).filter(([remote]) => wanted.has(remote))))
     const resolveAll = async () => {
-      const entries = await Promise.all(
-        items.map(async (item) => [item.media_url, await getPlayableUrl(item.media_url)] as const),
+      await Promise.all(
+        items.map(async (item) => {
+          const local = await getPlayableUrl(item.media_url)
+          if (!cancelled && local) setResolved((prev) => (prev[item.media_url] === local ? prev : { ...prev, [item.media_url]: local }))
+        }),
       )
       if (cancelled) return
-      const map: Record<string, string> = {}
-      for (const [remote, local] of entries) if (local) map[remote] = local
-      setResolved(map)
       // Keep the notices cached too — they play even with no signal.
       pruneCache([...items.map((i) => i.media_url), ...NOTICES.map((n) => new URL(n.url, location.origin).href)])
     }
@@ -314,6 +392,33 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
   const currentSrc = current.kind === 'ad' ? resolved[current.item.media_url] : (noticeUrls[current.notice.url] ?? current.notice.url)
 
   const advance = useCallback(() => setSlot((n) => n + 1), [])
+  const goBack = useCallback(() => setSlot((n) => Math.max(0, n - 1)), [])
+
+  // Preview only: arrow keys and left/right swipes move between ads; the timer restarts on each move.
+  const swipeStartX = useRef<number | null>(null)
+  useEffect(() => {
+    if (!preview) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') advance()
+      if (e.key === 'ArrowLeft') goBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [preview, advance, goBack])
+  const swipeHandlers = preview
+    ? {
+        onPointerDown: (e: React.PointerEvent) => {
+          swipeStartX.current = e.clientX
+        },
+        onPointerUp: (e: React.PointerEvent) => {
+          const start = swipeStartX.current
+          swipeStartX.current = null
+          if (start === null || Math.abs(e.clientX - start) < 50) return
+          if (e.clientX < start) advance()
+          else goBack()
+        },
+      }
+    : {}
 
   useEffect(() => {
     if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current)
@@ -344,7 +449,12 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
   }
 
   return (
-    <div ref={rootRef} className="kiosk relative h-screen w-screen overflow-hidden bg-black" onClick={enterFullscreen}>
+    <div
+      ref={rootRef}
+      className={`relative overflow-hidden bg-black ${preview ? 'h-full w-full touch-pan-y select-none' : 'kiosk h-screen w-screen'}`}
+      onClick={enterFullscreen}
+      {...swipeHandlers}
+    >
       {!tuktukActive ? (
         <OutOfServiceScreen tuktukId={tuktukId} />
       ) : current.kind === 'ad' && current.item.media_type === 'video' ? (
@@ -364,6 +474,7 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
           src={currentSrc}
           className="absolute inset-0 h-full w-full object-contain"
           alt={current.kind === 'notice' ? current.notice.title : ''}
+          draggable={false}
           onError={advance}
         />
       )}
@@ -381,14 +492,26 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
         <img src="/LOGO.png" alt="Village Media" className="h-14 w-auto sm:h-20" />
       </Link>
 
-      {preview && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-2 text-xs">
-          <span className="rounded bg-brand-500/30 px-2 py-1 text-brand-200">Admin preview</span>
-          <Link to="/admin" className="rounded bg-black/60 px-2 py-1 text-white/80 hover:text-white">
-            Exit
-          </Link>
-        </div>
-      )}
+      {preview &&
+        (
+          [
+            ['‹', 'Previous ad', goBack, 'left-3'],
+            ['›', 'Next ad', advance, 'right-3'],
+          ] as const
+        ).map(([icon, label, onClick, side]) => (
+          <button
+            key={label}
+            type="button"
+            aria-label={label}
+            title={label}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={onClick}
+            className={`absolute ${side} top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-3xl leading-none text-white backdrop-blur-sm hover:bg-black/70`}
+          >
+            {icon}
+          </button>
+        ))}
 
       {!isSupabaseConfigured && (
         <span className="absolute bottom-3 right-3 z-10 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-300">

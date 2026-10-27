@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { emailAgreement, getAgreementPdfUrl, listAgreements } from '../../lib/clientsApi'
+import { deleteClient, emailAgreement, getAgreementPdfUrl, listAgreements } from '../../lib/clientsApi'
 import { agreementFileName } from '../../lib/agreementPdf'
-import { isAdminProfile, useAuth } from '../../context/AuthContext'
+import { isAdminProfile, isSuperAdmin, useAuth } from '../../context/AuthContext'
 import { listStaff, staffName } from '../../lib/staffApi'
 import type { ClientAgreementWithClient, Profile } from '../../types'
 
 export function Clients() {
   const { profile } = useAuth()
   const isAdmin = isAdminProfile(profile)
+  const canDelete = isSuperAdmin(profile)
   const [staff, setStaff] = useState<Map<string, Profile>>(new Map())
   const [agreements, setAgreements] = useState<ClientAgreementWithClient[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,6 +62,25 @@ export function Clients() {
       setNotice(`Emailed to ${a.client.email}.`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send email.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const remove = async (a: ClientAgreementWithClient) => {
+    const name = a.client.company_name || a.client.legal_name
+    const ofClient = agreements.filter((x) => x.client_id === a.client_id)
+    const what = ofClient.length > 1 ? `${name} and all ${ofClient.length} of its agreements` : `${name} and its signed agreement`
+    if (!confirm(`Permanently delete ${what}, including the PDF? This can't be undone.`)) return
+    setError(null)
+    setNotice(null)
+    setBusyId(a.id)
+    try {
+      await deleteClient(a.client_id, ofClient.map((x) => x.pdf_path).filter((p): p is string => Boolean(p)))
+      setAgreements((prev) => prev.filter((x) => x.client_id !== a.client_id))
+      setNotice(`${name} deleted.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete client.')
     } finally {
       setBusyId(null)
     }
@@ -152,6 +172,15 @@ export function Clients() {
                     >
                       {a.emailed_at ? 'Email again' : 'Email client'}
                     </button>
+                    {canDelete && (
+                      <button
+                        onClick={() => remove(a)}
+                        disabled={busy}
+                        className="rounded border border-red-900 px-3 py-2 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

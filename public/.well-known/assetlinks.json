@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "za.co.villagetuktuks.ads",
+      "sha256_cert_fingerprints": [
+        "69:BB:47:92:94:4F:4F:0A:FB:50:8C:69:D2:67:C1:32:F2:A5:E2:E3:A4:AF:DF:D4:0D:9F:35:08:CB:30:A3:7F"
+      ]
+    }
+  }
+]

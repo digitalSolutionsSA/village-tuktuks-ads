@@ -4,7 +4,7 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
-import { TERM_OPTIONS, VILLAGE_MEDIA } from '../../lib/agreementText'
+import { EXTRA_AREA_FEE, TERM_OPTIONS, VILLAGE_MEDIA } from '../../lib/agreementText'
 import { formatRand, listPackages } from '../../lib/salesApi'
 import { DEMO_ADS, DEMO_TUKTUKS } from '../../lib/demoData'
 import { useTheme } from '../../hooks/useTheme'
@@ -24,11 +24,15 @@ const STATEMENT = 'Your ad. On every route. In front of every passenger. Every s
 
 /** `count` makes the number tick up when it scrolls into view; text-only values just reveal. */
 const REACH = [
-  { icon: '👥', value: '5,000+', count: 5000, suffix: '+', label: 'Rides per month', note: '(October projection)' },
+  { icon: '👥', value: '10,000+', count: 10000, suffix: '+', label: 'Rides per month', note: '(October projection)' },
   { icon: '🛺', value: '10', count: 10, label: 'Active tuk-tuks with tablets' },
   { icon: '📍', value: 'Multiple', label: 'Midvaal communities and routes' },
-  { icon: '🙌', value: '1,000+', count: 1000, suffix: '+', label: 'Local passengers every month' },
+  { icon: '🙌', value: '12,000+', count: 12000, suffix: '+', label: 'Local passengers every month' },
 ]
+
+/** Floor for the "live right now" strip, so the pitch never shows fewer than this. */
+const MIN_SCREENS_ONLINE = 10
+const MIN_ADS_RUNNING = 48
 
 /** Shown if no packages are set up under Packages (and in demo mode). */
 const BROCHURE_PACKAGES: SalesPackage[] = [
@@ -68,19 +72,25 @@ const PACKAGE_THEMES = [
   { head: 'bg-logo-red', ring: 'border-logo-red/70', price: 'text-red-300', glow: 'shadow-red-500/25', icon: '▶️' },
 ]
 
+// One area, as in the projection calculator: 5 screens × 12 h a day, ad every 500 s, 30 days.
+const PLAYS_PER_MONTH = 12960
 const PLAYS = [
-  { name: 'Standard', seconds: 5, perMonth: 21600, perDay: 720, perPlay: 0.04, head: 'bg-brand-600', ring: 'border-brand-500/50' },
-  { name: 'Premium', seconds: 10, perMonth: 10800, perDay: 360, perPlay: 0.13, head: 'bg-logo-red', ring: 'border-logo-red/50' },
+  { name: 'Standard', seconds: 5, fee: 950, head: 'bg-brand-600', ring: 'border-brand-500/50', price: 'text-brand-300' },
+  { name: 'Premium', seconds: 10, fee: 1450, head: 'bg-logo-red', ring: 'border-logo-red/50', price: 'text-red-300' },
 ]
 
+/** `max` is the top of the typical monthly range, used for "save up to". */
 const COMPARE = [
-  { icon: '📰', medium: 'Community newspaper', cost: 'R800 – R3,000', limit: 'Short-lived, gets thrown away' },
-  { icon: '📘', medium: 'Facebook boosted posts', cost: 'R500 – R2,000', limit: 'Limited local reach, competes with many other ads' },
-  { icon: '📻', medium: 'Local radio advertising', cost: 'R2,000 – R20,000+', limit: 'Expensive, not always targeted' },
-  { icon: '🪧', medium: 'Outdoor billboards', cost: 'R2,500 – R20,000+', limit: 'Fixed location, high cost' },
-  { icon: '🛒', medium: 'Shopping centre screens', cost: 'R300 – R2,000', limit: 'Limited to one location' },
-  { icon: '🚕', medium: 'Taxi rank advertising', cost: 'R500 – R3,000', limit: 'Static location, limited audience' },
+  { icon: '📰', medium: 'Community newspaper', max: 3000 },
+  { icon: '📘', medium: 'Facebook boosted posts', max: 2000 },
+  { icon: '📻', medium: 'Local radio advertising', max: 20000 },
+  { icon: '🪧', medium: 'Outdoor billboards', max: 20000 },
+  { icon: '🛒', medium: 'Shopping centre screens', max: 2000 },
+  { icon: '🚕', medium: 'Taxi rank advertising', max: 3000 },
 ]
+
+const rand = (n: number) => `R${n.toLocaleString('en-US')}`
+const BIGGEST_SAVING = Math.max(...COMPARE.map((c) => c.max))
 
 const WHY = [
   { icon: '👥', text: 'Reaches local customers where they travel' },
@@ -97,7 +107,7 @@ const PILLARS = [
 ]
 
 const STEPS = [
-  { title: 'Pick your package', body: 'Standard (5-second image) or Premium (10-second video or image), for 1 month or 12 months.' },
+  { title: 'Pick your package', body: 'Standard (5-second image) or Premium (10-second video or image), on a 12-month term. One area included, R100 a month for each extra area.' },
   { title: 'Send your artwork', body: 'Logo, photos, video, prices, QR code. Need a design? We can make it for you.' },
   { title: 'You approve it', body: 'Nothing goes live until you have approved the final ad.' },
   { title: 'Live on the screens', body: 'Your ad plays in rotation on the 10-inch HD tablets inside Village Tuk vehicles.' },
@@ -108,7 +118,7 @@ const STEP_COLORS = ['bg-logo-red', 'bg-logo-gold', 'bg-logo-green', 'bg-logo-bl
 // Plain-language summary of the agreement (lib/agreementText.ts) — keep in step with the contract.
 const TERMS = [
   'Standard: one static image, 5 seconds per play. Premium: video or image, 10 seconds per play.',
-  'Choose a 1-month or 12-month term from your campaign start date. After that it carries on month-to-month until either side gives 30 days’ notice.',
+  'A 12-month term from your campaign start date. After that it carries on month-to-month until either side gives 30 days’ notice.',
   'Cancelling before your term ends costs 50% of the fees left for the rest of that term.',
   'Monthly fee paid in advance by the 25th for the following month, by EFT.',
   'Design and video production quoted separately, only if you need it.',
@@ -246,11 +256,14 @@ export function Pitch() {
     else void rootRef.current?.requestFullscreen?.()
   }
 
-  const onlineNow = tuktuks.filter(
-    (t) => t.active && t.last_seen_at && Date.now() - new Date(t.last_seen_at).getTime() < ONLINE_THRESHOLD_MS,
-  ).length
+  const onlineNow = Math.max(
+    MIN_SCREENS_ONLINE,
+    tuktuks.filter(
+      (t) => t.active && t.last_seen_at && Date.now() - new Date(t.last_seen_at).getTime() < ONLINE_THRESHOLD_MS,
+    ).length,
+  )
+  const adsRunning = Math.max(MIN_ADS_RUNNING, ads.length)
   const shownPackages = packages.length ? packages : BROCHURE_PACKAGES
-  const showcase = ads.slice(0, 8)
   const signupHref = (p: SalesPackage) => (p.id ? `/admin/signup?package=${p.id}` : '/admin/signup')
 
   // Hero entrance — once, on load.
@@ -379,23 +392,14 @@ export function Pitch() {
             }),
           )
 
-          // Comparison rows wipe in, then our row lights up.
+          // Savings rows wipe in.
           gsap.fromTo(
             '[data-compare-row]',
             { clipPath: 'inset(0 100% 0 0)', opacity: 0 },
             { clipPath: 'inset(0 0% 0 0)', opacity: 1, duration: 0.9, stagger: 0.09, ease: 'power3.out', scrollTrigger: once('[data-compare]') },
           )
-          gsap.from('[data-compare-us]', {
-            backgroundColor: 'rgba(46, 151, 55, 0.7)',
-            opacity: 0,
-            duration: 1.6,
-            delay: 0.7,
-            ease: 'power2.out',
-            scrollTrigger: once('[data-compare]'),
-          })
 
           gsap.from('[data-pillar]', { scale: 0, rotate: -60, duration: 1.1, stagger: 0.14, ease: 'back.out(2.4)', scrollTrigger: once('[data-pillars]') })
-          gsap.from('[data-bar]', { scaleY: 0, duration: 0.9, stagger: 0.06, ease: 'expo.out', scrollTrigger: once('[data-bars]') })
 
           // Colour glows drift against the scroll for depth.
           all('[data-glow]').forEach((el) =>
@@ -442,7 +446,7 @@ export function Pitch() {
       )
       ScrollTrigger.refresh()
     },
-    { scope: rootRef, dependencies: [fullscreen, shownPackages.length, showcase.length], revertOnUpdate: true },
+    { scope: rootRef, dependencies: [fullscreen, shownPackages.length], revertOnUpdate: true },
   )
 
   return (
@@ -576,14 +580,14 @@ export function Pitch() {
             Live right now: <b className="text-zinc-200">{onlineNow}</b> screens online
           </span>
           <span>
-            <b className="text-zinc-200">{ads.length}</b> ads running today
+            <b className="text-zinc-200">{adsRunning}</b> ads running today
           </span>
         </p>
       </Band>
 
       {/* ───────── Packages ───────── */}
       <Band glow={['bg-logo-red', 'bg-logo-blue']} className="bg-zinc-900/30">
-        <SectionHeading eyebrow="Packages" title="Two ways to get on screen." intro="Simple monthly pricing. 1-month or 12-month terms." />
+        <SectionHeading eyebrow="Packages" title="Two ways to get on screen." intro="Simple monthly pricing on a 12-month term." />
         <div data-packages className="grid gap-6 md:grid-cols-2 lg:gap-10 [perspective:1400px]">
           {shownPackages.map((p, i) => {
             const theme = PACKAGE_THEMES[i % PACKAGE_THEMES.length]
@@ -618,6 +622,7 @@ export function Pitch() {
                         📅 {t.label}
                       </span>
                     ))}
+                    <span className="rounded-full border border-zinc-700 px-3 py-1 text-zinc-300">📍 +R{EXTRA_AREA_FEE} per extra area</span>
                   </div>
                   <ul className="mb-8 space-y-2.5 text-zinc-300 sm:text-lg">
                     {p.features.map((f) => (
@@ -643,58 +648,47 @@ export function Pitch() {
       {/* ───────── Projection (was its own page) ───────── */}
       <Band glow={['bg-logo-green', 'bg-logo-blue']}>
         <ProjectionSection
-          heading={<SectionHeading eyebrow="Your projection" title="What would your ad get?" intro="Live numbers from the real fleet and today’s real ad rotation." />}
+          heading={<SectionHeading eyebrow="Your projection" title="What would your ad get?" intro="Standard and Premium side by side. Pick the areas you want to be seen in." />}
         />
       </Band>
 
-      {/* ───────── Potential plays ───────── */}
+      {/* ───────── Cost per ad ───────── */}
       <Band className="bg-zinc-900/30">
-        <SectionHeading eyebrow="Potential plays" title="Seen again. And again." intro="Based on 10 tuk-tuks operating ±10 hours a day for 30 days, at 100 advertisers." />
-        <div data-reveal-stagger className="grid gap-6 md:grid-cols-2">
+        <SectionHeading
+          eyebrow="Cost per ad"
+          title="Cents per play. Not thousands."
+          intro="What each play of your ad costs, and how much you keep in your pocket compared with other ways to advertise."
+        />
+        <div data-reveal-stagger className="mb-8 grid gap-6 md:grid-cols-2">
           {PLAYS.map((p) => (
-            <div key={p.name} className={`overflow-hidden rounded-3xl border bg-zinc-900 ${p.ring}`}>
-              <p className={`px-5 py-3 text-center font-bold uppercase text-on-accent ${p.head}`}>
+            <div key={p.name} className={`overflow-hidden rounded-3xl border bg-zinc-900 text-center ${p.ring}`}>
+              <p className={`px-5 py-3 font-bold uppercase text-on-accent ${p.head}`}>
                 {p.name} ({p.seconds} seconds)
               </p>
-              <div className="grid grid-cols-3 divide-x divide-zinc-800 text-center">
-                <div className="p-4 sm:p-6">
-                  <p className="text-[clamp(1.5rem,3vw,2.5rem)] font-black leading-none">
-                    <Count value={p.perMonth} />
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-400 sm:text-sm">plays per month</p>
-                </div>
-                <div className="p-4 sm:p-6">
-                  <p className="text-[clamp(1.5rem,3vw,2.5rem)] font-black leading-none">
-                    <Count value={p.perDay} />
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-400 sm:text-sm">plays per day</p>
-                </div>
-                <div className="p-4 sm:p-6">
-                  <p className="text-[clamp(1.5rem,3vw,2.5rem)] font-black leading-none">
-                    <Count value={p.perPlay} decimals={2} prefix="±R" />
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-400 sm:text-sm">per play</p>
-                </div>
+              <div className="p-6 sm:p-8">
+                <p className={`text-[clamp(3rem,7vw,4.5rem)] font-black leading-none ${p.price}`}>
+                  <Count value={p.fee / PLAYS_PER_MONTH} decimals={2} prefix="±R" />
+                </p>
+                <p className="mt-2 text-zinc-300">per play</p>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {rand(p.fee)} a month ÷ {PLAYS_PER_MONTH.toLocaleString('en-US')} plays in one area
+                </p>
               </div>
             </div>
           ))}
         </div>
-        <p data-reveal className="mt-6 text-center text-xs italic text-zinc-500">
-          Up to these figures — theoretical maximums with 100 advertisers and continuous playback. Actual results may vary
-          depending on the number of advertisers, operating hours and other factors.
-        </p>
-      </Band>
 
-      {/* ───────── How we compare ───────── */}
-      <Band glow={['bg-logo-gold', 'bg-logo-green']}>
-        <SectionHeading eyebrow="How we compare" title="Big impact. Fraction of the cost." />
         <div data-compare className="overflow-x-auto rounded-3xl border border-zinc-800">
-          <table className="w-full min-w-[620px] text-left sm:text-lg">
+          <table className="w-full min-w-[560px] text-left sm:text-lg">
             <thead className="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500 sm:text-sm">
               <tr>
-                <th className="px-5 py-4">Advertising medium</th>
-                <th className="px-5 py-4">Typical monthly cost</th>
-                <th className="px-5 py-4">Key limitation</th>
+                <th className="px-5 py-4">Instead of</th>
+                <th className="px-5 py-4">They charge up to</th>
+                {PLAYS.map((p) => (
+                  <th key={p.name} className="px-5 py-4">
+                    You save with {p.name}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
@@ -706,23 +700,24 @@ export function Pitch() {
                     </span>
                     {c.medium}
                   </td>
-                  <td className="px-5 py-4 text-zinc-300">{c.cost}</td>
-                  <td className="px-5 py-4 text-zinc-400">{c.limit}</td>
+                  <td className="px-5 py-4 font-semibold text-red-400">{rand(c.max)} / month</td>
+                  {PLAYS.map((p) => (
+                    <td key={p.name} className="px-5 py-4 font-bold text-green-300">
+                      {rand(c.max - p.fee)} / month
+                    </td>
+                  ))}
                 </tr>
               ))}
-              <tr data-compare-us className="bg-green-500/15">
-                <td className="px-5 py-6 text-lg font-black sm:text-xl">
-                  <span className="mr-2" aria-hidden>
-                    🛺
-                  </span>
-                  Village Media Tuk-Tuk advertising
-                </td>
-                <td className="px-5 py-6 text-lg font-black sm:text-xl">R950 – R1,450</td>
-                <td className="px-5 py-6 font-bold text-green-300">Mobile, local, captive audience across multiple communities</td>
-              </tr>
             </tbody>
           </table>
         </div>
+        <p data-reveal className="mt-6 rounded-2xl bg-green-500/15 px-5 py-4 text-center text-lg font-bold text-green-200 sm:text-xl">
+          Save up to {rand((BIGGEST_SAVING - PLAYS[0].fee) * 12)} a year compared with radio or billboard advertising.
+        </p>
+        <p data-reveal className="mt-4 text-center text-xs italic text-zinc-500">
+          Savings compare our monthly price with the top of each medium's typical monthly cost. Plays are estimates for one
+          area; actual results may vary with operating hours and other factors.
+        </p>
       </Band>
 
       {/* ───────── Why choose ───────── */}
@@ -770,24 +765,6 @@ export function Pitch() {
           ))}
         </div>
       </Band>
-
-      {showcase.length > 0 && (
-        <Band className="bg-zinc-900/30">
-          <SectionHeading eyebrow="On the screens now" title="Running today." />
-          <div data-reveal-stagger className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {showcase.map((ad) => (
-              <figure key={ad.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-black">
-                {ad.media_type === 'video' ? (
-                  <video src={ad.media_url} muted loop autoPlay playsInline className="aspect-video w-full object-cover" />
-                ) : (
-                  <img src={ad.media_url} alt={ad.title} className="aspect-video w-full object-cover" />
-                )}
-                <figcaption className="truncate px-3 py-2 text-xs text-zinc-300">{ad.advertiser_name || ad.title}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </Band>
-      )}
 
       {/* ───────── Fine print ───────── */}
       <Band>

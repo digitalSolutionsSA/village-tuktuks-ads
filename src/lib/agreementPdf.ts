@@ -4,11 +4,13 @@ import {
   AGREEMENT_IS_DRAFT,
   AGREEMENT_VERSION,
   DEFAULT_AD_DURATION,
+  EXTRA_AREA_FEE,
   INITIAL_TERM,
   SIGNATURE_DECLARATION,
   VAT_OPTIONS,
   VILLAGE_MEDIA,
   agreementSectionsFor,
+  countAreas,
 } from './agreementText'
 import type { VatOption } from '../types'
 
@@ -28,13 +30,16 @@ export interface AgreementPdfInput {
     effective_date: string
     areas: string[]
     other_area: string
+    /** Package price for one area; monthly_fee is this plus the extra-area charge. */
+    package_fee: string
     monthly_fee: string
     vat: VatOption | ''
     campaign_start: string
     initial_term: string
     package_notes: string
   }
-  clientSigner: { name: string; company: string; capacity: string; signaturePng: string }
+  /** `initialsPng` is drawn once and stamped on every page. */
+  clientSigner: { name: string; company: string; capacity: string; signaturePng: string; initialsPng: string }
   vmSigner: { name: string; capacity: string; signaturePng: string }
 }
 
@@ -215,6 +220,11 @@ export async function buildAgreementPdf(input: AgreementPdfInput): Promise<Blob>
     { label: `Other${schedule.other_area ? `: ${schedule.other_area}` : ''}`, checked: Boolean(schedule.other_area) },
   ])
   row('Digital Ad Duration', DEFAULT_AD_DURATION)
+  const extraAreas = Math.max(0, countAreas(schedule.areas, schedule.other_area) - 1)
+  if (schedule.package_fee) {
+    row('Package Fee (1 area)', `R ${schedule.package_fee}`)
+    row('Extra Areas', extraAreas ? `${extraAreas} × R ${EXTRA_AREA_FEE} = R ${extraAreas * EXTRA_AREA_FEE}` : 'None')
+  }
   row('Monthly Fee', schedule.monthly_fee ? `R ${schedule.monthly_fee}` : '')
   checkboxRow(
     'VAT',
@@ -258,14 +268,35 @@ export async function buildAgreementPdf(input: AgreementPdfInput): Promise<Blob>
     'normal',
   )
 
-  addFooters(doc, input.agreementId)
+  addFooters(doc, input.agreementId, input.clientSigner.initialsPng)
   return doc.output('blob')
 }
 
-function addFooters(doc: JsPdf, agreementId: string) {
+const INITIALS_W = 30
+const INITIALS_H = 14
+
+function addFooters(doc: JsPdf, agreementId: string, initialsPng: string) {
   const pages = doc.getNumberOfPages()
+  const props = initialsPng ? doc.getImageProperties(initialsPng) : null
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i)
+
+    // The client's initials, in a box at the bottom right of every page.
+    const bx = PAGE_W - MARGIN - INITIALS_W
+    const by = PAGE_H - 25
+    doc.setDrawColor(160)
+    doc.rect(bx, by, INITIALS_W, INITIALS_H)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6)
+    doc.setTextColor(120)
+    doc.text('Client initials', bx + 1.5, by + 2.6)
+    if (props) {
+      const scale = Math.min((INITIALS_W - 3) / props.width, (INITIALS_H - 4) / props.height)
+      const w = props.width * scale
+      const h = props.height * scale
+      doc.addImage(initialsPng, 'PNG', bx + (INITIALS_W - w) / 2, by + 3.2 + (INITIALS_H - 4 - h) / 2, w, h)
+    }
+
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(120)
