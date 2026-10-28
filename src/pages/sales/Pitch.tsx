@@ -789,7 +789,7 @@ export function Pitch() {
             <SplitWords text="Ready to get on screen?" wordAttr="data-split-word" />
           </h2>
           <p data-reveal data-reveal-start="top bottom" className="mx-auto mb-10 max-w-2xl text-lg text-on-accent/85 sm:text-xl">
-            Sign right here on the tablet — you get a copy of the agreement by email. Questions? Call {VILLAGE_MEDIA.telephone}.
+            Sign right here on the tablet — you get a copy of the agreement by email. Questions? Call {VILLAGE_MEDIA.telephone}, email {VILLAGE_MEDIA.email} or visit {VILLAGE_MEDIA.website}.
           </p>
           <div data-reveal data-reveal-start="top bottom">
             <Link

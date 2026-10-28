@@ -212,6 +212,7 @@ export async function buildAgreementPdf(input: AgreementPdfInput): Promise<Blob>
   row('Business Address', VILLAGE_MEDIA.businessAddress)
   row('Email', VILLAGE_MEDIA.email)
   row('Telephone', VILLAGE_MEDIA.telephone)
+  row('Website', VILLAGE_MEDIA.website)
 
   // ---- 2. Campaign schedule ----
   heading('2. CAMPAIGN SCHEDULE')

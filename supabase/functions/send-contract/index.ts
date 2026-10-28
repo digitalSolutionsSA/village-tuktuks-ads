@@ -70,11 +70,12 @@ Deno.serve(async (req) => {
       from,
       to: [client.email],
       ...(bcc ? { bcc: [bcc] } : {}),
+      reply_to: 'sales@vm-group.co.za',
       subject: 'Your Village Media advertising agreement',
       html: `<p>Hi ${escapeHtml(client.legal_name)},</p>
 <p>Thank you for advertising with Village Media. Attached is your signed Digital In-Vehicle Advertising Services Agreement for ${escapeHtml(party)}.</p>
-<p>Please keep it for your records. If anything looks wrong, reply to this email or call us on 060 972 9534.</p>
-<p>Village Media</p>`,
+<p>Please keep it for your records. If anything looks wrong, reply to this email, email sales@vm-group.co.za or call us on 060 972 9534.</p>
+<p>Village Media<br><a href="https://vm-group.co.za">vm-group.co.za</a></p>`,
       attachments: [
         {
           filename: `Village-Media-Agreement-${slug}-${agreement.signed_at.slice(0, 10)}.pdf`,

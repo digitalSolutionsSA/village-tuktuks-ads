@@ -18,8 +18,9 @@ export const VILLAGE_MEDIA = {
   // Blank in the source document — fill in and they'll print on every new contract.
   registrationNo: '',
   businessAddress: 'Cnr Rooibok & Henley Drive, Highbury, Henley on Klip, 1961',
-  email: '',
+  email: 'sales@vm-group.co.za',
   telephone: '060 972 9534',
+  website: 'vm-group.co.za',
 }
 
 export const ADVERTISING_AREAS = ['Meyerton', 'Vanderbijlpark', 'Heidelberg', 'Walkerville'] as const
