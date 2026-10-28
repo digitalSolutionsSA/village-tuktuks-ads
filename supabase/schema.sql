@@ -1109,3 +1109,72 @@ alter table public.costs enable row level security;
 drop policy if exists "costs: main admins" on public.costs;
 create policy "costs: main admins" on public.costs for all
   using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
+
+-- ============================================================
+-- 17. Ad length follows the customer's package
+-- ============================================================
+-- Existing projects: run just this section in the SQL Editor. It is safe to
+-- re-run.
+--
+-- Standard (R950) = 5 seconds per play, Premium (R1,450) = 10 seconds.
+-- Sales people must load every ad for a signed customer, and its length is
+-- set from that customer's package. Main admins choose the length themselves.
+
+-- Package from the notes ("Standard…" / "Premium…"), otherwise the one-area fee.
+-- Uses the newest agreement that hasn't ended. Keep in sync with src/lib/adPackage.ts.
+create or replace function public.package_ad_seconds(client_id_param uuid)
+returns int
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when a.package_notes ilike '%premium%' then 10
+    when a.package_notes ilike '%standard%' then 5
+    when a.monthly_fee is null then null
+    when a.monthly_fee - 100 * greatest(
+      cardinality(a.areas) + case when coalesce(trim(a.other_area), '') <> '' then 1 else 0 end - 1, 0
+    ) >= 1200 then 10
+    else 5
+  end
+  from public.client_agreements a
+  where a.client_id = client_id_param
+  order by (a.ended_on is null) desc, a.signed_at desc
+  limit 1;
+$$;
+
+create or replace function public.trg_creatives_package_length()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_seconds int;
+begin
+  -- Main admins, and the SQL editor / service role (no signed-in user), pick freely.
+  if auth.uid() is null or public.is_super_admin(auth.uid()) then
+    return new;
+  end if;
+  -- Leave older ads alone when a sales person only changes something else (e.g. dates).
+  if TG_OP = 'UPDATE'
+     and new.client_id is not distinct from old.client_id
+     and new.duration_seconds = old.duration_seconds then
+    return new;
+  end if;
+  if new.client_id is null then
+    raise exception 'Choose the signed customer this ad is for.';
+  end if;
+  v_seconds := public.package_ad_seconds(new.client_id);
+  if v_seconds is null then
+    raise exception 'Can''t tell from this customer''s contract whether they''re on Standard or Premium — ask management to load the ad.';
+  end if;
+  new.duration_seconds := v_seconds;
+  return new;
+end;
+$$;
+
+drop trigger if exists creatives_package_length on public.creatives;
+create trigger creatives_package_length before insert or update on public.creatives
+  for each row execute procedure public.trg_creatives_package_length();

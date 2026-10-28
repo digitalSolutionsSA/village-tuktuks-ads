@@ -4,7 +4,8 @@ import { isSupabaseConfigured, supabase, MEDIA_BUCKET } from '../../lib/supabase
 import { DEMO_ADS } from '../../lib/demoData'
 import { listGroups } from '../../lib/groupsApi'
 import { listAgreements } from '../../lib/clientsApi'
-import { useAuth } from '../../context/AuthContext'
+import { AD_SECONDS_OPTIONS, packageAdSeconds, packageLabel } from '../../lib/adPackage'
+import { isSuperAdmin, useAuth } from '../../context/AuthContext'
 import type { Ad, Client, MediaType, TuktukGroup } from '../../types'
 
 function guessMediaType(file: File): MediaType | null {
@@ -19,10 +20,14 @@ export function AdForm() {
   const isEdit = Boolean(id)
   const { profile } = useAuth()
   const navigate = useNavigate()
+  /** Management picks 5 or 10 seconds; sales people get whatever the customer's package allows. */
+  const canPickSeconds = isSuperAdmin(profile)
 
   const [title, setTitle] = useState('')
   const [advertiserName, setAdvertiserName] = useState('')
-  const [durationSeconds, setDurationSeconds] = useState(8)
+  const [durationSeconds, setDurationSeconds] = useState(5)
+  /** Seconds per play each signed customer's package allows (null = can't tell from the contract). */
+  const [clientSeconds, setClientSeconds] = useState<Record<string, 5 | 10 | null>>({})
   const [isActive, setIsActive] = useState(true)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -40,10 +45,16 @@ export function AdForm() {
     Promise.all([listGroups(), listAgreements()])
       .then(([g, agreements]) => {
         setGroups(g)
-        // Signed customers, newest first, each once.
+        // Signed customers, newest first, each once. Their package comes from the newest
+        // agreement that hasn't ended (or the newest one if they all have).
         const seen = new Map<string, Client>()
+        const seconds: Record<string, 5 | 10 | null> = {}
         for (const a of agreements) if (!seen.has(a.client.id)) seen.set(a.client.id, a.client)
+        for (const a of [...agreements.filter((x) => !x.ended_on), ...agreements.filter((x) => x.ended_on)]) {
+          if (!(a.client.id in seconds)) seconds[a.client.id] = packageAdSeconds(a)
+        }
         setClients([...seen.values()])
+        setClientSeconds(seconds)
       })
       .catch((err) => console.error('[AdForm] failed to load areas / customers', err))
   }, [])
@@ -95,7 +106,13 @@ export function AdForm() {
     setClientId(id)
     const c = clients.find((x) => x.id === id)
     if (c) setAdvertiserName(c.company_name || c.legal_name)
+    const s = clientSeconds[id]
+    if (s) setDurationSeconds(s)
   }
+
+  /** What the chosen customer's package allows; for sales people this is the ad's length. */
+  const packageSeconds = clientId ? (clientSeconds[clientId] ?? null) : null
+  const effectiveSeconds = canPickSeconds ? durationSeconds : packageSeconds
 
   const toggleGroup = (groupId: string) => {
     setSelectedGroups((prev) => {
@@ -118,6 +135,16 @@ export function AdForm() {
 
     if (!isEdit && !file) {
       setError('Please choose an image or video file.')
+      return
+    }
+
+    if (!canPickSeconds && !clientId) {
+      setError('Choose the signed customer this ad is for.')
+      return
+    }
+
+    if (!effectiveSeconds) {
+      setError("Can't tell from this customer's contract whether they're on Standard or Premium — ask management to load the ad.")
       return
     }
 
@@ -151,7 +178,7 @@ export function AdForm() {
         media_path: mediaPath,
         media_url: mediaUrl,
         media_type: mediaType,
-        duration_seconds: durationSeconds,
+        duration_seconds: effectiveSeconds,
         is_active: isActive,
         start_date: startDate || null,
         end_date: endDate || null,
@@ -233,6 +260,7 @@ export function AdForm() {
         <div>
           <label className="mb-1 block text-xs font-medium text-zinc-400">Customer</label>
           <select
+            required={!canPickSeconds}
             value={clientId}
             onChange={(e) => pickClient(e.target.value)}
             className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-brand-400"
@@ -241,10 +269,11 @@ export function AdForm() {
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.company_name || c.legal_name}
+                {clientSeconds[c.id] ? ` — ${packageLabel(clientSeconds[c.id]!)}` : ''}
               </option>
             ))}
           </select>
-          {!clientId && (
+          {!clientId && canPickSeconds && (
             <input
               value={advertiserName}
               onChange={(e) => setAdvertiserName(e.target.value)}
@@ -277,18 +306,40 @@ export function AdForm() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-400">
-              Image duration (seconds)
-            </label>
-            <input
-              type="number"
-              min={2}
-              max={120}
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(Number(e.target.value))}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-brand-400"
-            />
-            <p className="mt-1 text-xs text-zinc-500">Ignored for video — plays for its own length.</p>
+            <label className="mb-1 block text-xs font-medium text-zinc-400">Seconds per play</label>
+            {canPickSeconds ? (
+              <div className="flex gap-2">
+                {AD_SECONDS_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDurationSeconds(s)}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                      durationSeconds === s
+                        ? 'border-brand-400 bg-brand-500/20 text-brand-200'
+                        : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
+                    }`}
+                  >
+                    {durationSeconds === s ? '✓ ' : ''}
+                    {s} seconds
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300">
+                {!clientId
+                  ? 'Set by the customer’s package'
+                  : packageSeconds
+                    ? `${packageSeconds} seconds — ${packageLabel(packageSeconds)} package`
+                    : 'Unknown package — ask management'}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-zinc-500">
+              {canPickSeconds && packageSeconds && packageSeconds !== durationSeconds
+                ? `This customer’s package is ${packageLabel(packageSeconds)} (${packageSeconds} seconds). `
+                : ''}
+              Ignored for video — plays for its own length.
+            </p>
           </div>
           <div className="flex items-end gap-2 pb-2">
             <input
