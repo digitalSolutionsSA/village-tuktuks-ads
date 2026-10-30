@@ -13,6 +13,8 @@ export function AdsList() {
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({})
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  /** The one video ad being previewed; the rest stay as placeholders so nothing big downloads. */
+  const [watchingId, setWatchingId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -107,9 +109,31 @@ export function AdsList() {
             <div key={ad.id} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
               <div className="aspect-video bg-black">
                 {ad.media_type === 'video' ? (
-                  <video src={ad.media_url} className="h-full w-full object-cover" muted />
+                  // Videos can be tens of MB — only download one when someone asks to see it.
+                  watchingId === ad.id ? (
+                    <video
+                      src={ad.media_url}
+                      className="h-full w-full object-cover"
+                      muted
+                      autoPlay
+                      controls
+                      playsInline
+                      onLoadedMetadata={(e) => {
+                        e.currentTarget.currentTime = Number(ad.video_start_seconds ?? 0)
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setWatchingId(ad.id)}
+                      className="flex h-full w-full flex-col items-center justify-center gap-1 text-zinc-400 hover:text-white"
+                    >
+                      <span className="text-3xl">▶</span>
+                      <span className="text-xs">Play video</span>
+                    </button>
+                  )
                 ) : (
-                  <img src={ad.media_url} className="h-full w-full object-cover" alt={ad.title} />
+                  <img src={ad.media_url} className="h-full w-full object-cover" alt={ad.title} loading="lazy" />
                 )}
               </div>
               <div className="p-3">
