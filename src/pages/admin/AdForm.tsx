@@ -4,7 +4,7 @@ import { isSupabaseConfigured, supabase, MEDIA_BUCKET } from '../../lib/supabase
 import { DEMO_ADS } from '../../lib/demoData'
 import { listGroups } from '../../lib/groupsApi'
 import { listAgreements } from '../../lib/clientsApi'
-import { AD_SECONDS_OPTIONS, packageAdSeconds, packageLabel } from '../../lib/adPackage'
+import { AD_SECONDS_OPTIONS, packageAdSeconds, packageLabel, VIDEO_MAX_SECONDS } from '../../lib/adPackage'
 import { isSuperAdmin, useAuth } from '../../context/AuthContext'
 import type { Ad, Client, MediaType, TuktukGroup } from '../../types'
 
@@ -112,7 +112,13 @@ export function AdForm() {
 
   /** What the chosen customer's package allows; for sales people this is the ad's length. */
   const packageSeconds = clientId ? (clientSeconds[clientId] ?? null) : null
-  const effectiveSeconds = canPickSeconds ? durationSeconds : packageSeconds
+  /** The media the ad will have once saved: the newly chosen file, or the one already on it. */
+  const mediaType: MediaType | null = file ? guessMediaType(file) : (existingAd?.media_type ?? null)
+  const isVideo = mediaType === 'video'
+  /** Video is Premium only — Standard customers can load images only. */
+  const videoAllowed = packageSeconds !== 5
+  // A video always gets the Premium length; the player cuts it off there.
+  const effectiveSeconds = isVideo ? VIDEO_MAX_SECONDS : canPickSeconds ? durationSeconds : packageSeconds
 
   const toggleGroup = (groupId: string) => {
     setSelectedGroups((prev) => {
@@ -140,6 +146,11 @@ export function AdForm() {
 
     if (!canPickSeconds && !clientId) {
       setError('Choose the signed customer this ad is for.')
+      return
+    }
+
+    if (isVideo && !videoAllowed) {
+      setError('Video is only available on the Premium package — this customer is on Standard, so please load an image.')
       return
     }
 
@@ -285,7 +296,7 @@ export function AdForm() {
 
         <div>
           <label className="mb-1 block text-xs font-medium text-zinc-400">
-            {isEdit ? 'Replace media (optional)' : 'Media file (image or video)'}
+            {isEdit ? 'Replace media (optional)' : videoAllowed ? 'Media file (image or video)' : 'Media file (image)'}
           </label>
           {existingAd && (
             <div className="mb-2 aspect-video w-48 overflow-hidden rounded-lg bg-black">
@@ -298,16 +309,32 @@ export function AdForm() {
           )}
           <input
             type="file"
-            accept="image/*,video/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            accept={videoAllowed ? 'image/*,video/*' : 'image/*'}
+            onChange={(e) => {
+              const picked = e.target.files?.[0] ?? null
+              setFile(picked)
+              if (picked && guessMediaType(picked) === 'video') {
+                setDurationSeconds(VIDEO_MAX_SECONDS)
+                if (!videoAllowed) setError('Video is only available on the Premium package — please choose an image.')
+              }
+            }}
             className="block w-full text-sm text-zinc-300 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-zinc-700"
           />
+          <p className="mt-1 text-xs text-zinc-500">
+            {videoAllowed
+              ? `Video is Premium only and stops after ${VIDEO_MAX_SECONDS} seconds, however long the file is.`
+              : 'Standard package — images only. Video needs the Premium package.'}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-zinc-400">Seconds per play</label>
-            {canPickSeconds ? (
+            {isVideo ? (
+              <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300">
+                {VIDEO_MAX_SECONDS} seconds — Premium video
+              </p>
+            ) : canPickSeconds ? (
               <div className="flex gap-2">
                 {AD_SECONDS_OPTIONS.map((s) => (
                   <button
@@ -335,10 +362,10 @@ export function AdForm() {
               </p>
             )}
             <p className="mt-1 text-xs text-zinc-500">
-              {canPickSeconds && packageSeconds && packageSeconds !== durationSeconds
+              {canPickSeconds && !isVideo && packageSeconds && packageSeconds !== durationSeconds
                 ? `This customer’s package is ${packageLabel(packageSeconds)} (${packageSeconds} seconds). `
                 : ''}
-              Ignored for video — plays for its own length.
+              {isVideo ? `Videos stop after ${VIDEO_MAX_SECONDS} seconds, or sooner if they're shorter.` : ''}
             </p>
           </div>
           <div className="flex items-end gap-2 pb-2">

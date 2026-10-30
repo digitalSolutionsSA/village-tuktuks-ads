@@ -7,12 +7,12 @@ import { loadManifest, saveManifest } from '../../lib/playlistManifest'
 import { demoPlaylistFor } from '../../lib/demoData'
 import { listTuktuks } from '../../lib/tuktuksApi'
 import { useWakeLock } from '../../hooks/useWakeLock'
+import { VIDEO_MAX_SECONDS } from '../../lib/adPackage'
 import type { Ad, PlaylistItem, Tuktuk } from '../../types'
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const HEARTBEAT_INTERVAL_MS = 60 * 1000
 const DEFAULT_IMAGE_SECONDS = 8
-const VIDEO_SAFETY_TIMEOUT_MS = 90 * 1000
 /** On a weak signal a request can hang for minutes; give up and keep playing what's cached. */
 const SERVER_TIMEOUT_MS = 15 * 1000
 
@@ -430,8 +430,9 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
       const seconds = current.item.duration_seconds || DEFAULT_IMAGE_SECONDS
       advanceTimerRef.current = window.setTimeout(advance, seconds * 1000)
     } else {
-      // Safety net in case a video's 'ended' event never fires.
-      advanceTimerRef.current = window.setTimeout(advance, VIDEO_SAFETY_TIMEOUT_MS)
+      // Videos are cut off at 10 seconds however long the file is; shorter ones move on at 'ended'.
+      // This also covers a video whose 'ended' event never fires.
+      advanceTimerRef.current = window.setTimeout(advance, VIDEO_MAX_SECONDS * 1000)
     }
     return () => {
       if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current)

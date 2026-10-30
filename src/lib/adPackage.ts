@@ -21,4 +21,7 @@ export function packageAdSeconds(a: Pick<ClientAgreement, 'package_notes' | 'mon
   return Number(a.monthly_fee) - extraAreas * EXTRA_AREA_FEE >= PREMIUM_FEE_FROM ? 10 : 5
 }
 
-export const packageLabel = (seconds: number) => (seconds === 10 ? 'Premium' : 'Standard')
+/** Video is Premium only, and every video stops after this many seconds however long the file is. */
+export const VIDEO_MAX_SECONDS = 10
+
+export const packageLabel =(seconds: number) => (seconds === 10 ? 'Premium' : 'Standard')

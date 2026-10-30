@@ -1178,3 +1178,39 @@ $$;
 drop trigger if exists creatives_package_length on public.creatives;
 create trigger creatives_package_length before insert or update on public.creatives
   for each row execute procedure public.trg_creatives_package_length();
+
+-- ============================================================
+-- 18. Video is Premium only, cut off at 10 seconds
+-- ============================================================
+-- Existing projects: run just this section in the SQL Editor. It is safe to
+-- re-run.
+--
+-- Applies to everyone, main admins included: a video can't be loaded for a
+-- Standard customer, and every video is saved as 10 seconds (the player stops
+-- it there however long the file is). Runs after section 17's trigger
+-- ("creatives_package_length" < "creatives_video_premium" alphabetically).
+-- Keep in sync with VIDEO_MAX_SECONDS in src/lib/adPackage.ts.
+create or replace function public.trg_creatives_video_premium()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.media_type <> 'video' then
+    return new;
+  end if;
+  -- The SQL editor / service role (no signed-in user) can do anything.
+  if auth.uid() is not null
+     and new.client_id is not null
+     and public.package_ad_seconds(new.client_id) = 5 then
+    raise exception 'Video is only available on the Premium package — this customer is on Standard, so please load an image.';
+  end if;
+  new.duration_seconds := 10;
+  return new;
+end;
+$$;
+
+drop trigger if exists creatives_video_premium on public.creatives;
+create trigger creatives_video_premium before insert or update on public.creatives
+  for each row execute procedure public.trg_creatives_video_premium();
