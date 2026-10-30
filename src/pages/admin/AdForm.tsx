@@ -6,6 +6,7 @@ import { listGroups } from '../../lib/groupsApi'
 import { listAgreements } from '../../lib/clientsApi'
 import { AD_SECONDS_OPTIONS, packageAdSeconds, packageLabel, VIDEO_MAX_SECONDS } from '../../lib/adPackage'
 import { isSuperAdmin, useAuth } from '../../context/AuthContext'
+import { VideoTrim } from '../../components/VideoTrim'
 import type { Ad, Client, MediaType, TuktukGroup } from '../../types'
 
 function guessMediaType(file: File): MediaType | null {
@@ -32,6 +33,9 @@ export function AdForm() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  /** Where a long video's 10 seconds start. */
+  const [videoStart, setVideoStart] = useState(0)
+  const [fileUrl, setFileUrl] = useState<string | null>(null)
   const [existingAd, setExistingAd] = useState<Ad | null>(null)
   const [clientId, setClientId] = useState('')
   const [clients, setClients] = useState<Client[]>([])
@@ -58,6 +62,14 @@ export function AdForm() {
       })
       .catch((err) => console.error('[AdForm] failed to load areas / customers', err))
   }, [])
+
+  // A local preview of the chosen file, for picking which part of a video plays.
+  useEffect(() => {
+    if (!file) return setFileUrl(null)
+    const url = URL.createObjectURL(file)
+    setFileUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   useEffect(() => {
     if (!id) return
@@ -92,6 +104,7 @@ export function AdForm() {
       setTitle(ad.title)
       setAdvertiserName(ad.advertiser_name ?? '')
       setDurationSeconds(ad.duration_seconds)
+      setVideoStart(Number(ad.video_start_seconds ?? 0))
       setIsActive(ad.is_active)
       setStartDate(ad.start_date ?? '')
       setEndDate(ad.end_date ?? '')
@@ -190,6 +203,7 @@ export function AdForm() {
         media_url: mediaUrl,
         media_type: mediaType,
         duration_seconds: effectiveSeconds,
+        video_start_seconds: mediaType === 'video' ? videoStart : 0,
         is_active: isActive,
         start_date: startDate || null,
         end_date: endDate || null,
@@ -298,7 +312,7 @@ export function AdForm() {
           <label className="mb-1 block text-xs font-medium text-zinc-400">
             {isEdit ? 'Replace media (optional)' : videoAllowed ? 'Media file (image or video)' : 'Media file (image)'}
           </label>
-          {existingAd && (
+          {existingAd && !isVideo && (
             <div className="mb-2 aspect-video w-48 overflow-hidden rounded-lg bg-black">
               {existingAd.media_type === 'video' ? (
                 <video src={existingAd.media_url} className="h-full w-full object-cover" muted />
@@ -313,6 +327,7 @@ export function AdForm() {
             onChange={(e) => {
               const picked = e.target.files?.[0] ?? null
               setFile(picked)
+              setVideoStart(0)
               if (picked && guessMediaType(picked) === 'video') {
                 setDurationSeconds(VIDEO_MAX_SECONDS)
                 if (!videoAllowed) setError('Video is only available on the Premium package — please choose an image.')
@@ -325,6 +340,12 @@ export function AdForm() {
               ? `Video is Premium only and stops after ${VIDEO_MAX_SECONDS} seconds, however long the file is.`
               : 'Standard package — images only. Video needs the Premium package.'}
           </p>
+          {isVideo && (fileUrl ?? existingAd?.media_url) && (
+            <VideoTrim
+              key={fileUrl ?? existingAd?.media_url}
+              src={(fileUrl ?? existingAd?.media_url)!}
+              start={videoStart} onChange={setVideoStart} />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">

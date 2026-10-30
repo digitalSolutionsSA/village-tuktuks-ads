@@ -116,6 +116,8 @@ export interface Ad {
   media_url: string
   media_type: MediaType
   duration_seconds: number
+  /** Where a video's 10 seconds start (schema.sql §19). Missing on ads cached before it existed. */
+  video_start_seconds?: number | null
   is_active: boolean
   start_date: string | null
   end_date: string | null

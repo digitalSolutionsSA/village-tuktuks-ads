@@ -1214,3 +1214,18 @@ $$;
 drop trigger if exists creatives_video_premium on public.creatives;
 create trigger creatives_video_premium before insert or update on public.creatives
   for each row execute procedure public.trg_creatives_video_premium();
+
+-- ============================================================
+-- 19. Choose which 10 seconds of a video play
+-- ============================================================
+-- Existing projects: run just this section in the SQL Editor. It is safe to
+-- re-run.
+--
+-- For a video longer than 10 seconds, the ad form picks where the 10 seconds
+-- start; the player jumps there and stops 10 seconds later. 0 = from the start.
+alter table public.creatives
+  add column if not exists video_start_seconds numeric not null default 0;
+
+alter table public.creatives drop constraint if exists creatives_video_start_seconds_check;
+alter table public.creatives
+  add constraint creatives_video_start_seconds_check check (video_start_seconds >= 0);

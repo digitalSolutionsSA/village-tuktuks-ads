@@ -463,9 +463,16 @@ function PlayerScreen({ tuktukId, preview }: { tuktukId: number; preview: boolea
           key={slot}
           src={currentSrc}
           className="absolute inset-0 h-full w-full object-contain"
-          autoPlay
           muted
           playsInline
+          // Start at the chosen part of the video; the 10-second timer above stops it.
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget
+            v.currentTime = Number(current.item.video_start_seconds ?? 0)
+            v.play().catch(() => {
+              /* the 10-second timer still moves on */
+            })
+          }}
           onEnded={advance}
           onError={advance}
         />
